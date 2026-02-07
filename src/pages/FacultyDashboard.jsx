@@ -102,7 +102,8 @@ export default function FacultyDashboard() {
     imageSrc: null,
     files: [], // Array of all files in the current group
     currentIndex: 0,
-    zoom: 1
+    zoom: 1,
+    contextKey: null // Track context for removal
   });
 
   useEffect(() => {
@@ -126,7 +127,7 @@ export default function FacultyDashboard() {
             if (payload.eventType === 'UPDATE') {
                // Status sync
                if (payload.new.status === 'revision' && payload.old.status !== 'revision') {
-                  addToast('Updates requested by Admin. Please check your documents.', 'info');
+                  // Updates requested notification suppressed as per request
                } else if (payload.new.status === 'approved') {
                   addToast('Checklist Approved!', 'success');
                }
@@ -352,7 +353,6 @@ export default function FacultyDashboard() {
     
     // Set specific item as uploading
     setUploadingItems(prev => ({ ...prev, [key]: true }));
-    addToast('Uploading to Supabase Storage...', 'info');
     
     try {
       let type, itemId, docName;
@@ -440,7 +440,7 @@ export default function FacultyDashboard() {
         return newState;
       });
 
-      addToast('Upload successful!', 'success');
+      addToast('Uploaded Successful', 'success');
     } catch (err) {
       console.error('Upload Error:', err);
       addToast('Upload failed: ' + err.message, 'error');
@@ -511,19 +511,18 @@ export default function FacultyDashboard() {
       const confirmRemove = window.confirm('Are you sure you want to remove this file?');
       if (!confirmRemove) return;
 
-      // 2. DELETE FROM STORAGE
+      // 2. DELETE FROM STORAGE (Only if path exists)
       if (docToRemove.path) {
         const { error: storageError } = await supabase.storage
           .from('checklists')
           .remove([docToRemove.path]);
         
         if (storageError) {
-          console.error('Storage Remove Error:', storageError);
-          // We continue to remove from DB even if storage fail (orphan cleanup) or throw?
-          // Usually best to throw to keep sync, but orphans are better than ghost UI.
-          // Let's throw to warn user.
-          throw new Error('Failed to delete file from storage.');
+          console.error('Storage Remove Error (Non-fatal):', storageError);
+          // We continue to remove from DB to prevent "ghost" files that can't be deleted
         }
+      } else {
+        console.warn('Document has no path, skipping storage deletion and removing from DB only.');
       }
 
       // 3. UPDATE STATE IMMUTABLY
@@ -792,10 +791,7 @@ export default function FacultyDashboard() {
                 {checklist.subjects.map((subject) => (
                   <tr key={subject.id}>
                     <td data-label="Subject">
-                      <strong>{subject.name}</strong><br />
-                      <small className="text-gray">
-                        {subject.code} - {subject.course} {subject.section}
-                      </small>
+                      <strong>{subject.name}</strong>
                     </td>
                     {DEFAULT_DOCUMENTS.subjects.map((doc, docIdx) => {
                       const key = `subject-${subject.id}-${docIdx}`;
@@ -830,7 +826,8 @@ export default function FacultyDashboard() {
                                       imageSrc: file.preview,
                                       files: allFiles,
                                       currentIndex: index,
-                                      zoom: 1
+                                      zoom: 1,
+                                      contextKey: key
                                     });
                                   }}
                                 />
@@ -903,7 +900,12 @@ export default function FacultyDashboard() {
                         {isRejected && <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold', marginTop: '4px' }}>⚠️ ACTION REQUIRED: RE-UPLOAD</div>}
                       </td>
                         <td data-label="Status" style={{ verticalAlign: 'middle', backgroundColor: isRejected ? '#fee2e2' : 'transparent' }}>
-                          {!hasUpload ? (
+                          {uploadingItems[key] ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--brand-blue)', fontSize: '12px', fontWeight: 'bold', width: '100%', justifyContent: 'flex-end', padding: '10px' }}>
+                                <div className="spinner" style={{ width: '16px', height: '16px', borderTopColor: 'var(--brand-blue)', borderWidth: '2px' }}></div>
+                                Uploading...
+                              </div>
+                          ) : !hasUpload ? (
                             <label className={`upload-btn ${isReadOnly ? 'disabled' : ''}`} style={{ width: '100%', maxWidth: '200px', marginLeft: 'auto' }} htmlFor={key}>
                               📤 Upload Proof
                               <input
@@ -931,22 +933,23 @@ export default function FacultyDashboard() {
                                     imageSrc: file.preview,
                                     files: allFiles,
                                     currentIndex: index,
-                                    zoom: 1
+                                    zoom: 1,
+                                    contextKey: key
                                   });
                                 }}
                               />
-                              {!isReadOnly && (
-                                <label className="btn btn-sm btn-outline">
-                                  + Add
-                                  <input
-                                    type="file"
-                                    accept="image/jpeg,image/png"
-                                    multiple
-                                    onChange={(e) => handleFileUpload(key, e.target.files)}
-                                    style={{ display: 'none' }}
-                                  />
-                                </label>
-                              )}
+                                {!isReadOnly && (
+                                  <label className="btn-add-mini" title="Add more documents">
+                                    +
+                                    <input
+                                      type="file"
+                                      accept="image/jpeg,image/png"
+                                      multiple
+                                      onChange={(e) => handleFileUpload(key, e.target.files)}
+                                      style={{ display: 'none' }}
+                                    />
+                                  </label>
+                                )}
                             </div>
                           )}
                         </td>
@@ -1084,7 +1087,24 @@ export default function FacultyDashboard() {
              <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
                <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.min(prev.zoom + 0.5, 3) }))}>➕ Zoom In</button>
                <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.max(prev.zoom - 0.5, 0.5) }))}>➖ Zoom Out</button>
-               <button className="btn btn-sm" style={{ background: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none' }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false, zoom: 1 }))}>❌ Close</button>
+               
+               {/* Remove Button - Only if not read-only (LIVE term) */}
+               {selectedTerm === 'LIVE' && (
+                  <button 
+                    className="btn btn-sm" 
+                    style={{ background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', marginLeft: '10px' }}
+                    onClick={() => {
+                       if (window.confirm('Remove this file?')) {
+                          removeUpload(previewState.contextKey, previewState.currentIndex);
+                          setPreviewState(prev => ({ ...prev, isOpen: false }));
+                       }
+                    }}
+                  >
+                    🗑️ Remove
+                  </button>
+               )}
+
+               <button className="btn btn-sm" style={{ background: 'rgba(75, 85, 99, 0.9)', color: 'white', border: 'none' }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false, zoom: 1 }))}>❌ Close</button>
              </div>
 
              {/* Navigation - Left */}

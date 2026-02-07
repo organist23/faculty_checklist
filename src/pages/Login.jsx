@@ -48,8 +48,10 @@ export default function Login() {
     <div className="login-container">
       <div className="login-card">
         <div className="login-header">
-          <div className="logo-badge mb-4" style={{ fontSize: '48px', textAlign: 'center' }}>🏛️</div>
-          <h1 className="login-title" style={{ fontSize: 'var(--text-4xl)', letterSpacing: '-0.02em', textAlign: 'center' }}>NVSU</h1>
+          <div className="logo-badge mb-4" style={{ textAlign: 'center' }}>
+            <img src="/Logo/educlogo.jpg" alt="NVSU Logo" style={{ width: '100px', height: '100px', objectFit: 'contain', marginBottom: '1rem' }} />
+          </div>
+          <h1 className="login-title" style={{ fontSize: 'var(--text-3xl)', letterSpacing: '-0.02em', textAlign: 'center' }}>NVSU CTED-BPED</h1>
           <p className="login-subtitle" style={{ fontWeight: '600', color: 'var(--nvsu-green)', textAlign: 'center' }}>
             Faculty Compliance Checklist<br />
             <span style={{ fontWeight: '400', color: 'var(--gray-500)', fontSize: 'var(--text-sm)' }}>Management System</span>
@@ -63,7 +65,7 @@ export default function Login() {
             </div>
           )}
 
-          <div className="form-group">
+          <div className="form-group" style={{ marginBottom: '10px' }}>
             <label htmlFor="email" className="form-label">Email Address</label>
             <input
               type="email"
@@ -111,16 +113,11 @@ export default function Login() {
             style={{ width: '100%' }}
             disabled={loading || authLoading}
           >
-            {loading || authLoading ? 'Authenticating...' : 'Authenticate Access'}
+            {loading || authLoading ? 'Logging in...' : 'Log in'}
           </button>
         </form>
 
-        <div style={{ marginTop: 'var(--space-8)', textAlign: 'center', paddingTop: 'var(--space-6)', borderTop: '1px solid var(--gray-200)' }}>
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--gray-500)' }}>
-            <strong>NVSU CTED-BPED Institutional Portal</strong><br />
-            Use your institutional credentials to access the system.
-          </p>
-        </div>
+
       </div>
 
     </div>

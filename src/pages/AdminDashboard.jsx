@@ -216,8 +216,34 @@ export default function AdminDashboard() {
   // PREVIEW MODAL STATE
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewData, setPreviewData] = useState(null);
+  const [printScale, setPrintScale] = useState(1);
 
   // Click away listener for settings menu
+  useEffect(() => {
+    if (!showPreviewModal) return;
+    
+    const calculateScale = () => {
+      // Calculate scale to fit screen width with some padding
+      // Paper width is 816px
+      const viewportWidth = window.innerWidth;
+      // Increased padding to ensure edges are clearly visible (zoomed out slightly more)
+      const sidePadding = viewportWidth < 768 ? 25 : 40; 
+      const totalPadding = sidePadding * 2;
+      
+      const availableWidth = viewportWidth - totalPadding;
+      
+      if (availableWidth < 816) {
+        setPrintScale(availableWidth / 816);
+      } else {
+        setPrintScale(1);
+      }
+    };
+    
+    calculateScale();
+    window.addEventListener('resize', calculateScale);
+    return () => window.removeEventListener('resize', calculateScale);
+  }, [showPreviewModal]);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
@@ -341,11 +367,11 @@ export default function AdminDashboard() {
 
   if (loading && checklists.length === 0) {
     return (
-      <div className="login-container" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div className="spinner-large" style={{ marginBottom: 'var(--space-4)' }}></div>
-          <h2 style={{ color: 'var(--nvsu-green-dark-color, #0d5c2f)' }}>Loading Dashboard...</h2>
-          <p className="text-gray">Fetching latest faculty compliance data</p>
+      <div className="loading-screen" style={{ color: 'var(--gray-900)' }}>
+        <div style={{ textAlign: 'center', padding: 'var(--space-4)' }}>
+          <div className="spinner-large" style={{ marginBottom: 'var(--space-6)' }}></div>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: 'var(--space-2)', color: 'var(--nvsu-green-dark)' }}>Loading Dashboard...</h2>
+          <p className="text-gray" style={{ fontSize: '0.9rem' }}>Fetching latest faculty compliance data</p>
         </div>
       </div>
     );
@@ -677,7 +703,12 @@ export default function AdminDashboard() {
                                   { id: 'sub-2', name: 'Sample Subject 2', code: 'PE 102' }
                                 ],
                                 otherDocuments: [
-                                  'Faculty Workload', 'IPCR – Target', 'IPCR – Final with Rating'
+                                  'Faculty Workload', 'IPCR – Target', 'IPCR – Final with Rating',
+                                  'Student Consultation', 'Student Evaluation (FPESf)', 
+                                  'Superior\'s Evaluation (FPESu)', 'Classroom Observation',
+                                  'Accomplishment Report – Quarter 1', 'Accomplishment Report – Quarter 2',
+                                  'Seminar / Training Certificate/s', 'Membership ID / Certificate/s',
+                                  'Individual Development Plan', 'Faculty Attendance'
                                 ],
                                 uploads: checklist.uploads || {}
                               };
@@ -767,82 +798,220 @@ export default function AdminDashboard() {
 
       {/* Submission Preview Modal */}
       {showPreviewModal && previewData && (
-        <div className="modal-backdrop" onClick={() => setShowPreviewModal(false)}>
-          <div className="modal" style={{ maxWidth: '800px', width: '90%' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">📄 Overall Submission Preview</h3>
+        <div className="modal-backdrop" style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          width: '100%', 
+          height: '100%', 
+          backgroundColor: 'rgba(0, 0, 0, 0.5)', 
+          zIndex: 1000,
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: '20px'
+        }} onClick={() => setShowPreviewModal(false)}>
+          <div className="modal-content" style={{ 
+            backgroundColor: 'white', 
+            borderRadius: '8px',
+            width: '100%',
+            maxWidth: '1200px',
+            maxHeight: '95vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          }} onClick={e => e.stopPropagation()}>
+            {/* Modal Header/Toolbar */}
+            <div className="modal-header" style={{ 
+              padding: '1rem', 
+              borderBottom: '1px solid #eee', 
+              display: 'flex', 
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              backgroundColor: '#f8f9fa'
+            }}>
+              <h3 className="modal-title" style={{ margin: 0, fontSize: '1.25rem' }}>Overall Submission Preview</h3>
+              <button 
+                onClick={() => setShowPreviewModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: '#666'
+                }}
+              >
+                &times;
+              </button>
             </div>
-            <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-              <div className="mb-6 p-4 rounded" style={{ backgroundColor: 'var(--brand-green-pale)', border: '1px solid var(--nvsu-green-light)' }}>
-                <h4 style={{ color: 'var(--nvsu-green)', marginBottom: 'var(--space-2)' }}>Faculty Submission Details</h4>
-                <div className="grid grid-cols-2 gap-2 text-sm" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                  <div><strong>Faculty:</strong> {previewData.facultyName}</div>
-                  <div><strong>Term:</strong> {previewData.semester}</div>
-                  <div><strong>College:</strong> {previewData.college}</div>
-                  <div><strong>A.Y.:</strong> {previewData.academicYear}</div>
-                </div>
-              </div>
 
-              {/* Subject Documents Summary */}
-              <div className="mb-6">
-                <h4 style={{ borderBottom: '2px solid var(--nvsu-green)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-                  Documents by Subjects
-                </h4>
-                {previewData.subjects.map((subject) => (
-                  <div key={subject.id} className="mb-4">
-                    <h5 style={{ color: 'var(--nvsu-green)', marginBottom: 'var(--space-2)' }}>
-                      {subject.code} - {subject.name}
-                    </h5>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-2)' }}>
-                      {[
-                        'Syllabus', 'IMs', 'Exam (Mid)', 'Exam (Final)', 
-                        'TOS (Mid)', 'TOS (Final)', 'Rubrics', 'Quizzes',
-                        'Learning Activities', 'COTED', 'Grading Sheet', 'Class Record'
-                      ].map((doc, idx) => {
-                        const key = `subject-${subject.id}-${idx}`;
-                        const upload = previewData.uploads[key];
-                        return (
-                          <div key={idx} style={{ 
-                            padding: 'var(--space-2)', 
-                            borderRadius: '4px', 
-                            fontSize: 'var(--text-xs)',
-                            backgroundColor: upload ? '#f0fff4' : '#fff5f5',
-                            border: `1px solid ${upload ? '#c6f6d5' : '#fed7d7'}`
-                          }}>
-                            {upload ? '✅' : '❌'} {doc}
-                          </div>
-                        );
-                      })}
-                    </div>
+            {/* Scrollable Content */}
+            <div className="modal-body" style={{ 
+              overflow: 'auto', 
+              padding: printScale < 1 ? '10px' : '2rem', // Reduced padding on mobile/scaled view
+              flex: 1,
+              backgroundColor: '#525659'
+            }}>
+              <div className="paper-document print-content" style={{
+                backgroundColor: 'white',
+                padding: '40px',
+                width: '816px', // Fixed width for Letter size (8.5 inches * 96 DPI)
+                minWidth: '816px', // Ensure it doesn't shrink
+                margin: '0 auto',
+                zoom: printScale, // Zoom for mobile preview
+                boxShadow: '0 0 10px rgba(0,0,0,0.3)',
+                fontFamily: '"Times New Roman", Times, serif',
+                color: 'black',
+                position: 'relative' // Ensure relative positioning for print
+              }}>
+                
+                {/* Official Header */}
+                <div style={{ 
+                  border: '1px solid black', 
+                  marginBottom: '20px', 
+                  padding: '10px', 
+                  display: 'flex', 
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative'
+                }}>
+                  <div style={{ position: 'absolute', left: '20px' }}>
+                    <img src="/Logo/NVSU_logo.jpg" alt="Logo" style={{ width: '80px', height: '80px' }} />
                   </div>
-                ))}
-              </div>
+                  <div style={{ textAlign: 'center', width: '100%' }}>
+                    <div style={{ fontSize: '12pt' }}>Republic of the Philippines</div>
+                    <div style={{ fontSize: '14pt', fontWeight: 'bold' }}>NUEVA VIZCAYA STATE UNIVERSITY</div>
+                    <div style={{ fontSize: '12pt' }}>Bambang, Nueva Vizcaya</div>
+                    <div style={{ fontSize: '16pt', fontWeight: 'bold', marginTop: '10px', textTransform: 'uppercase' }}>FACULTY CHECKLIST</div>
+                  </div>
+                </div>
 
-              {/* Other Documents Summary */}
-              <div>
-                <h4 style={{ borderBottom: '2px solid var(--nvsu-green)', paddingBottom: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
-                  Other Documents
-                </h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 'var(--space-2)' }}>
-                  {previewData.otherDocuments.map((doc, idx) => {
-                    const key = `other-${idx}`;
-                    const upload = previewData.uploads[key];
-                    return (
-                      <div key={idx} style={{ 
-                        padding: 'var(--space-2)', 
-                        borderRadius: '4px', 
-                        fontSize: 'var(--text-xs)',
-                        backgroundColor: upload ? '#f0fff4' : '#fff5f5',
-                        border: `1px solid ${upload ? '#c6f6d5' : '#fed7d7'}`
-                      }}>
-                        {upload ? '✅' : '❌'} {doc}
-                      </div>
-                    );
-                  })}
+                {/* Faculty Details */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '1fr 1fr', 
+                  gap: '20px', 
+                  marginBottom: '30px',
+                  fontSize: '12pt'
+                }}>
+                  <div>
+                    <div style={{ marginBottom: '5px' }}><strong>Faculty Member:</strong> <span style={{ textTransform: 'uppercase', textDecoration: 'underline' }}>{previewData.facultyName}</span></div>
+                    <div><strong>College:</strong> <span style={{ textTransform: 'uppercase', textDecoration: 'underline' }}>{previewData.college || 'TEACHER EDUCATION'}</span></div>
+                  </div>
+                  <div>
+                    <div style={{ marginBottom: '5px' }}><strong>Semester & AY:</strong> <span style={{ textTransform: 'uppercase', textDecoration: 'underline' }}>{previewData.semester}, A.Y. {previewData.academicYear}</span></div>
+                    <div><strong>Department:</strong> <span style={{ textTransform: 'uppercase', textDecoration: 'underline' }}>{previewData.department || 'PHYSICAL EDUCATION'}</span></div>
+                  </div>
+                </div>
+
+                {/* Documents Table */}
+                <div style={{ marginBottom: '30px' }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '12pt' }}>Documents, by subject</div>
+                  <table style={{ 
+                    width: '100%', 
+                    borderCollapse: 'collapse', 
+                    fontSize: '10pt', 
+                    textAlign: 'center' 
+                  }}>
+                    <thead>
+                      <tr>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px', width: '15%' }}>Subjects Taught<br/>(per class)</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Syllabus</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>IMs</th>
+                        <th colSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Examinations</th>
+                        <th colSpan="2" style={{ border: '1px solid black', padding: '5px' }}>TOS</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Rubrics</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Quizzes</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Learning<br/>Activities</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>COTED</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Grading<br/>Sheet</th>
+                        <th rowSpan="2" style={{ border: '1px solid black', padding: '5px' }}>Class<br/>Record</th>
+                      </tr>
+                      <tr>
+                        <th style={{ border: '1px solid black', padding: '5px' }}>Mid</th>
+                        <th style={{ border: '1px solid black', padding: '5px' }}>Final</th>
+                        <th style={{ border: '1px solid black', padding: '5px' }}>Mid</th>
+                        <th style={{ border: '1px solid black', padding: '5px' }}>Final</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* We iterate 12 times for the columns as per DEFAULT_DOCUMENTS structure implied */}
+                      {previewData.subjects.map((subject) => (
+                        <tr key={subject.id}>
+                          <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left', fontWeight: 'bold' }}>
+                            {subject.name}
+                          </td>
+                          {[...Array(12)].map((_, idx) => {
+                            const key = `subject-${subject.id}-${idx}`;
+                            const upload = previewData.uploads[key];
+                            const hasUpload = upload && upload.length > 0;
+                            return (
+                              <td key={idx} style={{ border: '1px solid black', padding: '5px' }}>
+                                {hasUpload ? <span style={{ fontWeight: 'bold' }}>OK</span> : ''}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Other Documents Table */}
+                <div>
+                  <div style={{ fontWeight: 'bold', marginBottom: '10px', fontSize: '12pt' }}>Other Documents</div>
+                  <table style={{ 
+                    width: '100%', 
+                    borderCollapse: 'collapse', 
+                    fontSize: '10pt', 
+                    textAlign: 'center' 
+                  }}>
+                     <thead>
+                       <tr>
+                         <th style={{ border: '1px solid black', padding: '5px', width: '40%', textAlign: 'left' }}>Document Name</th>
+                         <th style={{ border: '1px solid black', padding: '5px' }}>Status</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {previewData.otherDocuments.map((doc, idx) => {
+                          const key = `other-${idx}`;
+                          const upload = previewData.uploads[key];
+                          const hasUpload = upload && upload.length > 0;
+                          return (
+                            <tr key={idx}>
+                              <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>{doc}</td>
+                              <td style={{ border: '1px solid black', padding: '5px' }}>{hasUpload ? <span style={{ fontWeight: 'bold' }}>OK</span> : ''}</td>
+                            </tr>
+                          );
+                       })}
+                     </tbody>
+                  </table>
+                </div>
+
+                {/* Print Footer */}
+                <div className="print-footer-info">
+                  Date Printed: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                 </div>
               </div>
             </div>
-            <div className="modal-footer" style={{ justifyContent: 'center' }}>
+
+            {/* Footer */}
+            <div className="modal-footer" style={{ 
+              padding: '1rem', 
+              borderTop: '1px solid #eee', 
+              display: 'flex', 
+              justifyContent: 'center',
+              backgroundColor: '#f8f9fa',
+              gap: '10px'
+            }}>
+              <button 
+                className="btn btn-secondary btn-lg" 
+                style={{ minWidth: '150px' }}
+                onClick={() => window.print()}
+              >
+                🖨️ PRINT
+              </button>
               <button 
                 className="btn btn-primary btn-lg" 
                 style={{ minWidth: '150px' }}
