@@ -657,8 +657,8 @@ export default function AdminDashboard() {
                   filteredChecklists.map((checklist) => (
                     <tr key={checklist.id}>
                       <td data-label="Faculty Name">
-                        <strong>{checklist.facultyName}</strong><br />
-                        <small className="text-gray">{checklist.department}</small>
+                        <strong>{checklist.facultyName}</strong>{" "}
+                        <small className="text-gray" style={{ display: 'block' }}>{checklist.department}</small>
                       </td>
                       <td data-label="College">{checklist.college}</td>
                       <td data-label="Deadline">

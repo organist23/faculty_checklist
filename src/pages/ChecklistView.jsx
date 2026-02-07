@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import DeadlineBanner from '../components/DeadlineBanner';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { supabase } from '../supabase';
 
 const DEFAULT_DOCUMENTS = {
@@ -66,7 +67,16 @@ export default function ChecklistView() {
   const navigate = useNavigate();
   const { user: admin } = useAuth();
   const { addToast } = useToast();
+  const { confirm, showAlert } = useConfirm();
   
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const [checklist, setChecklist] = useState({
     loading: true,
     status: 'pending',
@@ -104,9 +114,11 @@ export default function ChecklistView() {
     };
   }, [id]);
 
-  const fetchChecklist = async () => {
+  const fetchChecklist = async (isBackground = false) => {
     try {
-      setChecklist(prev => ({ ...prev, loading: true }));
+      if (!isBackground) {
+        setChecklist(prev => ({ ...prev, loading: true }));
+      }
       
       const { data, error } = await supabase
         .from('checklists')
@@ -261,22 +273,40 @@ export default function ChecklistView() {
     return () => window.removeEventListener('resize', calculateScale);
   }, [showPreviewModal]);
 
+  // Body scroll lock
+  useEffect(() => {
+    if (showPreviewModal || previewState.isOpen || showApproveModal) {
+      document.body.classList.add('modal-open');
+    } else {
+      document.body.classList.remove('modal-open');
+    }
+    return () => document.body.classList.remove('modal-open');
+  }, [showPreviewModal, previewState.isOpen, showApproveModal]);
+
   const handleApprove = async () => {
+    if (!navigator.onLine) {
+      addToast('No internet connection. Cannot approve checklist.', 'error');
+      return;
+    }
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('checklists')
         .update({ status: 'approved' })
-        .eq('id', id);
+        .eq('id', id)
+        .select();
 
       if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        throw new Error('PERMISSION DENIED: Database security policy blocked this update. Please check RLS settings.');
+      }
 
       setChecklist(prev => ({ ...prev, status: 'approved' }));
       setShowApproveModal(false);
-      addToast('Faculty checklist approved! Sending notification...', 'success');
+      addToast('Faculty checklist approved!', 'success');
       
-      setTimeout(() => {
-        navigate('/admin/dashboard');
-      }, 1500);
+      // Update data in background to ensure everything is synced
+      fetchChecklist(true);
     } catch (err) {
       console.error('Approval Error:', err);
       addToast('Failed to approve checklist.', 'error');
@@ -286,8 +316,13 @@ export default function ChecklistView() {
   const handleRemovePhoto = async (key, docToRemove) => {
     if (!key || !docToRemove) return;
     
-    const confirmReject = window.confirm('Are you sure you want to reject and remove this document?');
-    if (confirmReject) {
+    if (!navigator.onLine) {
+      addToast('No internet connection. Cannot reject document.', 'error');
+      return;
+    }
+    
+    const confirmed = await confirm('Are you sure you want to reject and remove this document?', 'Reject Document');
+    if (confirmed) {
       addToast('Processing rejection...', 'info'); // Immediate feedback
       try {
         // Find the specific doc in the state map to verify it exists
@@ -604,12 +639,39 @@ export default function ChecklistView() {
               >
                 Preview
               </button>
-              <button 
-                className="btn btn-primary btn-lg"
-                onClick={() => setShowApproveModal(true)}
-              >
-                Approve Checklist
-              </button>
+
+              {checklist.status === 'approved' ? (
+                <button 
+                  className="btn btn-outline btn-lg"
+                  onClick={async () => {
+                    const confirmed = await confirm('Are you sure you want to undo this approval? The status will revert to Pending.', 'Undo Approval');
+                    if (confirmed) {
+                      try {
+                        const { error } = await supabase
+                          .from('checklists')
+                          .update({ status: 'pending' })
+                          .eq('id', id);
+                        
+                        if (error) throw error;
+                        addToast('Approval undone. Status is now Pending.', 'info');
+                        fetchChecklist(true); // Background refresh
+                      } catch (err) {
+                        console.error('Undo error:', err);
+                        addToast('Failed to undo approval.', 'error');
+                      }
+                    }
+                  }}
+                >
+                  ↩️ Undo Approval
+                </button>
+              ) : (
+                <button 
+                  className="btn btn-primary btn-lg"
+                  onClick={() => setShowApproveModal(true)}
+                >
+                  Approve Checklist
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -743,23 +805,24 @@ export default function ChecklistView() {
           left: 0, 
           width: '100%', 
           height: '100%', 
-          backgroundColor: 'rgba(0, 0, 0, 0.5)', 
-          zIndex: 1000,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)', 
+          zIndex: 99999, // Extremely high to cover everything
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          padding: '20px'
+          padding: viewportWidth < 768 ? '0' : '20px' // No padding on mobile
         }}>
           <div className="modal-content" style={{ 
             backgroundColor: 'white', 
-            borderRadius: '8px',
+            borderRadius: viewportWidth < 768 ? '0' : '8px',
             width: '100%',
-            maxWidth: '1200px',
-            maxHeight: '95vh',
+            height: viewportWidth < 768 ? '100%' : 'auto',
+            maxWidth: '1250px',
+            maxHeight: viewportWidth < 768 ? '100%' : '95vh',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+            boxShadow: '0 4px 50px rgba(0, 0, 0, 0.3)'
           }}>
             {/* Modal Header/Toolbar - Kept separate from the print design */}
             <div className="modal-header" style={{ 

@@ -779,10 +779,12 @@ a:hover {
     position: relative;
     padding-left: 45%;
     text-align: right;
-    min-height: 44px;
+    min-height: 52px; /* Increased for multi-line content */
     display: flex;
-    align-items: center;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
   }
 
   .table td:last-child {
@@ -2362,12 +2364,19 @@ input[type="time"] {
     font-size: 9pt;
     font-style: italic;
     color: black !important;
-    text-align: center; /* Centered looks better if no border */
-    /* border-top: 1px solid black;  <-- REMOVED as requested */
+    text-align: center; 
     padding-top: 5px;
     page-break-after: avoid;
     width: 100%;
   }
 }
+
+/* Modal Open state to prevent background scroll interference */
+.modal-open {
+  overflow: hidden !important;
+  height: 100% !important;
+  touch-action: none;
+}
+
 
 .print-footer-info { display: none; }

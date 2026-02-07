@@ -71,6 +71,9 @@ export function SystemProvider({ children }) {
   };
 
   const updateSettings = async (newSettings) => {
+    if (!navigator.onLine) {
+      return { success: false, error: 'No internet connection. Cannot update settings.' };
+    }
     try {
       const dbPayload = {};
       if (newSettings.semester) dbPayload.current_semester = newSettings.semester;

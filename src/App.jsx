@@ -33,12 +33,37 @@ function ProtectedRoute({ children, allowedRoles }) {
   return children;
 }
 
+import { useNetworkStatus } from './hooks/useNetworkStatus';
+
 // Main App Router
 function AppRouter() {
   const { isAuthenticated, user } = useAuth();
+  const isOnline = useNetworkStatus();
   
   return (
-    <Routes>
+    <>
+      {!isOnline && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          backgroundColor: '#ef4444', 
+          color: 'white', 
+          textAlign: 'center', 
+          padding: '8px', 
+          zIndex: 99999,
+          fontSize: '14px',
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px'
+        }}>
+          <span>📡</span> You are currently offline. Some features may not work.
+        </div>
+      )}
+      <Routes>
       <Route 
         path="/login" 
         element={
@@ -128,17 +153,22 @@ function AppRouter() {
       
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   );
 }
+
+import { ConfirmProvider } from './context/ConfirmContext';
 
 function App() {
   return (
     <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <SystemProvider>
         <AuthProvider>
-          <ToastProvider>
-            <AppRouter />
-          </ToastProvider>
+          <ConfirmProvider>
+            <ToastProvider>
+              <AppRouter />
+            </ToastProvider>
+          </ConfirmProvider>
         </AuthProvider>
       </SystemProvider>
     </Router>

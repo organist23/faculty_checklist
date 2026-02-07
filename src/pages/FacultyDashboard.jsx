@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import DeadlineBanner from '../components/DeadlineBanner';
 import { useSystem } from '../context/SystemContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { supabase } from '../supabase';
 
 const DEFAULT_DOCUMENTS = {
@@ -80,6 +81,7 @@ export default function FacultyDashboard() {
   const { user } = useAuth();
   const { settings } = useSystem();
   const { addToast } = useToast();
+  const { confirm, showAlert } = useConfirm();
   
   const [checklist, setChecklist] = useState({
     id: null,
@@ -351,6 +353,11 @@ export default function FacultyDashboard() {
   const handleFileUpload = async (key, files) => {
     if (!files || files.length === 0) return;
     
+    if (!navigator.onLine) {
+       addToast('No internet connection. Please check your network.', 'error');
+       return;
+    }
+    
     // Set specific item as uploading
     setUploadingItems(prev => ({ ...prev, [key]: true }));
     
@@ -475,6 +482,10 @@ export default function FacultyDashboard() {
   };
 
   const removeUpload = async (key, fileIndex) => {
+    if (!navigator.onLine) {
+       addToast('No internet connection. Cannot remove file.', 'error');
+       return;
+    }
     try {
       let docToRemove;
       let type, itemId, docName;
@@ -508,8 +519,8 @@ export default function FacultyDashboard() {
         return;
       }
 
-      const confirmRemove = window.confirm('Are you sure you want to remove this file?');
-      if (!confirmRemove) return;
+      const confirmed = await confirm('Are you sure you want to remove this file?', 'Remove Document');
+      if (!confirmed) return;
 
       // 2. DELETE FROM STORAGE (Only if path exists)
       if (docToRemove.path) {
@@ -567,6 +578,10 @@ export default function FacultyDashboard() {
   };
 
   const handleSubmit = async () => {
+    if (!navigator.onLine) {
+       addToast('No internet connection. Cannot submit checklist.', 'error');
+       return;
+    }
     setSubmitting(true);
     try {
       const { error } = await supabase
@@ -634,6 +649,22 @@ export default function FacultyDashboard() {
       <Header />
       
       <main className="container" style={{ paddingTop: 'var(--space-fluid-md)', paddingBottom: 'var(--space-fluid-md)' }}>
+        {checklist.error && (
+          <div className="card shadow-nvsu animate-fade-in" style={{ textAlign: 'center', padding: 'var(--space-12)', marginTop: 'var(--space-8)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🔌</div>
+            <h2 style={{ color: 'var(--nvsu-red)', marginBottom: 'var(--space-2)' }}>Connection Error</h2>
+            <p className="text-gray mb-6">
+              {checklist.error.includes('fetch') || !navigator.onLine 
+                ? "We're having trouble reaching the server. Please check your internet connection."
+                : checklist.error}
+            </p>
+            <button className="btn btn-primary btn-lg" onClick={() => fetchChecklist()}>
+              🔄 Retry Connection
+            </button>
+          </div>
+        )}
+
+        {!checklist.error && (<>
         {/* Deadline Banner */}
         <DeadlineBanner 
           deadline={checklist.deadline}
@@ -993,7 +1024,7 @@ export default function FacultyDashboard() {
                 onClick={() => setShowSubmitModal(true)}
                 disabled={checklist.status === 'pending' || checklist.status === 'approved'}
               >
-                {checklist.status === 'pending' ? 'Submission Pending' : 'Submit for Review'}
+                {checklist.status === 'approved' ? 'Already Approved' : checklist.status === 'pending' ? 'Submission Pending' : 'Submit for Review'}
               </button>
               <p style={{ 
                 marginTop: 'var(--space-4)', 
@@ -1077,6 +1108,7 @@ export default function FacultyDashboard() {
             </div>
           </div>
         )}
+        </>)}
       </main>
       {/* Image Preview Modal */}
       {previewState.isOpen && (
@@ -1093,8 +1125,9 @@ export default function FacultyDashboard() {
                   <button 
                     className="btn btn-sm" 
                     style={{ background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', marginLeft: '10px' }}
-                    onClick={() => {
-                       if (window.confirm('Remove this file?')) {
+                    onClick={async () => {
+                       const confirmed = await confirm('Are you sure you want to remove this file?', 'Remove Document');
+                       if (confirmed) {
                           removeUpload(previewState.contextKey, previewState.currentIndex);
                           setPreviewState(prev => ({ ...prev, isOpen: false }));
                        }

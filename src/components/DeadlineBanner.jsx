@@ -31,6 +31,14 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
       const daysLeft = differenceInDays(deadlineDate, now);
       const hoursLeft = differenceInHours(deadlineDate, now);
 
+      if (status === 'approved') {
+        setStatusClass('status-green');
+        setStatusIcon('🏛️');
+        setStatusText('Verified & Compliant');
+        setTimeRemaining('This checklist has been officially approved for this term.');
+        return;
+      }
+
       // Determine status based on submission and deadline
       if (submittedAt) {
         const submissionDate = new Date(submittedAt);
@@ -83,7 +91,7 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
     const interval = setInterval(updateCountdown, 60000); // Update every minute
 
     return () => clearInterval(interval);
-  }, [deadline, submittedAt, settings.deadlineEnabled]);
+  }, [deadline, submittedAt, settings.deadlineEnabled, status]);
 
   if (!deadline) {
     return null;

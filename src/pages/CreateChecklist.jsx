@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
+import { useConfirm } from '../context/ConfirmContext';
 
 const mockFaculty = [
   { id: '1', name: 'John Doe', department: 'BPED', email: 'johndoe@nvsu.edu.ph', defaultSubjects: ['P.E. 101', 'P.E. 102'] },
@@ -10,6 +11,7 @@ const mockFaculty = [
 
 export default function CreateChecklist() {
   const navigate = useNavigate();
+  const { showAlert } = useConfirm();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     semester: 'FIRST SEMESTER',
@@ -28,9 +30,9 @@ export default function CreateChecklist() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    alert('Checklist created and assigned successfully!');
+    await showAlert('Checklist created and assigned successfully!', 'Success');
     navigate('/admin/dashboard');
   };
 

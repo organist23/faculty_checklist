@@ -866,3 +866,20 @@ input:checked + .toggle-slider:before {
   animation: pulse-yellow 2s infinite;
   border-radius: var(--radius-md);
 }
+
+/* Optical Fix for Admin Search Icon Alignment */
+.search-box .search-icon {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  margin-top: -1px !important; /* Visual nudge for emojis */
+  font-size: 1.15rem !important;
+  pointer-events: none !important;
+}
+
+.search-box .search-input {
+  padding-left: 2.75rem !important;
+}
+

@@ -57,10 +57,12 @@ export const AuthProvider = ({ children }) => {
         }
       } catch (err) {
         console.error('Auth Init Error:', err);
-        // If it's a fetch error/network error, we might not want to kick them out immediately if they have a token?
-        // But getSession verifies token. If it fails, token is likely invalid or unreacheable.
-        // We set error, which ends loading. ProtectedRoute sees isAuthenticated=false -> Redirect.
-        if (mounted) setAuthState(prev => ({ ...prev, loading: false, error: err.message || 'Authentication check failed' }));
+        // Better error message for network issues
+        const errorMessage = (err.message?.includes('fetch') || !navigator.onLine)
+          ? 'Network error. Please check your internet connection and reload.'
+          : err.message || 'Authentication check failed';
+          
+        if (mounted) setAuthState(prev => ({ ...prev, loading: false, error: errorMessage }));
       }
     };
 

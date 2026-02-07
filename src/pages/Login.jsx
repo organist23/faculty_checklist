@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login, error: authError, loading: authLoading, clearError } = useAuth();
+  const { showAlert } = useConfirm();
   
   const [formData, setFormData] = useState({
     email: '',
@@ -26,6 +28,12 @@ export default function Login() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    
+    if (!navigator.onLine) {
+       setError('No internet connection. Please check your network and try again.');
+       setLoading(false);
+       return;
+    }
 
     if (!formData.email || !formData.password) {
       setError('Please enter both email and password');
@@ -100,7 +108,7 @@ export default function Login() {
             <button 
               type="button"
               className="link-btn"
-              onClick={() => alert("Please contact the CTED-BPED Office or IT center to reset your institutional credentials.")}
+              onClick={() => showAlert("Please contact the CTED-BPED Office or IT center to reset your institutional credentials.", "Account Recovery")}
               style={{ padding: 0, background: 'none', border: 'none', color: 'var(--nvsu-green)', fontWeight: '600', cursor: 'pointer' }}
             >
               Forgot password?

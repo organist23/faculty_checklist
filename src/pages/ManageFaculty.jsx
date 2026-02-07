@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from '../components/Header';
 import { useAuth } from '../context/AuthContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { supabase } from '../supabase';
 import { createClient } from '@supabase/supabase-js';
 
 export default function ManageFaculty() {
   const navigate = useNavigate();
   const { user: currentUser } = useAuth();
+  const { confirm, showAlert } = useConfirm();
   const [facultyList, setFacultyList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,6 +66,10 @@ export default function ManageFaculty() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!navigator.onLine) {
+      showAlert('No internet connection. Cannot create account.', 'Network Error');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -120,7 +126,7 @@ export default function ManageFaculty() {
 
       if (profileError) throw profileError;
 
-      alert(`Account created for ${formData.name}!`);
+      showAlert(`Account created for ${formData.name}!`, 'Success');
       setShowForm(false);
       setFormData({
         name: '',
@@ -133,14 +139,19 @@ export default function ManageFaculty() {
       fetchFaculty();
       
     } catch (err) {
-      alert(err.message);
+      showAlert(err.message, 'Error');
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this faculty account? (Note: This only removes the profile in this demo)')) {
+    if (!navigator.onLine) {
+      showAlert('No internet connection. Cannot delete account.', 'Network Error');
+      return;
+    }
+    const confirmed = await confirm('Are you sure you want to delete this faculty account?', 'Delete Account');
+    if (confirmed) {
       try {
         const { error } = await supabase
           .from('faculty_profiles')
@@ -150,7 +161,7 @@ export default function ManageFaculty() {
         if (error) throw error;
         setFacultyList(facultyList.filter(f => f.id !== id));
       } catch (err) {
-        alert(err.message);
+        showAlert(err.message, 'Error');
       }
     }
   };
