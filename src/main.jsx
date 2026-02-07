@@ -71,10 +71,30 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Safety patch for removeChild errors caused by browser extensions (e.g. Google Translate)
+// This prevents the "The node to be removed is not a child of this node" error from crashing React
+const originalRemoveChild = Node.prototype.removeChild;
+Node.prototype.removeChild = function(child) {
+  if (child.parentNode !== this) {
+    console.warn('Node.removeChild: The node to be removed is not a child of this node. Ignoring.');
+    return child;
+  }
+  return originalRemoveChild.apply(this, arguments);
+};
+
+const originalInsertBefore = Node.prototype.insertBefore;
+Node.prototype.insertBefore = function(newNode, referenceNode) {
+    if (referenceNode && referenceNode.parentNode !== this) {
+        console.warn('Node.insertBefore: Reference node is not a child of this node. Appending instead.');
+        if (referenceNode instanceof Node) {
+           return originalInsertBefore.apply(this, [newNode, null]);
+        }
+    }
+    return originalInsertBefore.apply(this, arguments);
+};
+
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
     <ErrorBoundary>
       <App />
-    </ErrorBoundary>
-  </React.StrictMode>,
+    </ErrorBoundary>,
 )

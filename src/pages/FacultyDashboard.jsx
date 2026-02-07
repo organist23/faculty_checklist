@@ -22,7 +22,7 @@ const DEFAULT_DOCUMENTS = {
   ]
 };
 
-const PhotoGrid = ({ uploads, onRemove, disabled, deadline }) => {
+const PhotoGrid = ({ uploads, onRemove, disabled, deadline, onPreview }) => {
   if (!uploads || uploads.length === 0) return null;
 
   const displayLimit = 4;
@@ -43,7 +43,12 @@ const PhotoGrid = ({ uploads, onRemove, disabled, deadline }) => {
           >
             <div className={`status-indicator ${statusClass}`}></div>
             {file.preview ? (
-              <img src={file.preview} alt={file.name} />
+              <img 
+                src={file.preview} 
+                alt={file.name} 
+                onClick={() => onPreview(file, uploads, idx)}
+                style={{ cursor: 'pointer' }} 
+              />
             ) : (
               <div className="file-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '10px' }}>📄</div>
             )}
@@ -84,10 +89,21 @@ export default function FacultyDashboard() {
     loading: true
   });
   
+
   const [selectedTerm, setSelectedTerm] = useState('LIVE');
   const [availableTerms, setAvailableTerms] = useState([]);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingItems, setUploadingItems] = useState({}); // Track uploading status per item key
+  
+  // Enhanced Preview State
+  const [previewState, setPreviewState] = useState({
+    isOpen: false,
+    imageSrc: null,
+    files: [], // Array of all files in the current group
+    currentIndex: 0,
+    zoom: 1
+  });
 
   useEffect(() => {
     if (user?.id) {
@@ -108,14 +124,14 @@ export default function FacultyDashboard() {
           (payload) => {
             console.log('Faculty Realtime Update:', payload);
             if (payload.eventType === 'UPDATE') {
-               // If status changed to revision, alert them
+               // Status sync
                if (payload.new.status === 'revision' && payload.old.status !== 'revision') {
                   addToast('Updates requested by Admin. Please check your documents.', 'info');
                } else if (payload.new.status === 'approved') {
                   addToast('Checklist Approved!', 'success');
                }
             }
-            fetchChecklist();
+            fetchChecklist(true); // Silent update for realtime events
           }
         )
         .subscribe();
@@ -141,9 +157,11 @@ export default function FacultyDashboard() {
     }
   };
 
-  const fetchChecklist = async () => {
+  const fetchChecklist = async (isBackground = false) => {
     try {
-      setChecklist(prev => ({ ...prev, loading: true }));
+      if (!isBackground) {
+        setChecklist(prev => ({ ...prev, loading: true }));
+      }
       const termId = selectedTerm === 'LIVE' 
         ? `${settings.academicYear}-${settings.semester}` 
         : selectedTerm;
@@ -206,21 +224,64 @@ export default function FacultyDashboard() {
 
       if (data) {
         // Hydrate previews for documents if they exist
-        const hydrateDocs = async (docList = []) => {
-          if (!docList) return [];
-          return await Promise.all(docList.map(async item => {
-            const docsWithPreviews = await Promise.all((item.docs || []).map(async doc => {
-               const { data: signData } = await supabase.storage
-                 .from('checklists')
-                 .createSignedUrl(doc.path, 3600);
-               return { ...doc, preview: signData?.signedUrl };
-            }));
-            return { ...item, docs: docsWithPreviews };
+        // Batched Hydration
+        const hydrateDocs = async (dataPayload) => {
+          const subjects = dataPayload.subjects || [];
+          const other = dataPayload.other_docs || [];
+          
+          // 1. Collect all paths
+          const allPaths = [];
+          
+          subjects.forEach(sub => {
+             if (sub.docs) sub.docs.forEach(d => allPaths.push(d.path));
+          });
+          other.forEach(item => {
+             if (item.docs) item.docs.forEach(d => allPaths.push(d.path));
+          });
+
+          if (allPaths.length === 0) {
+             return { subjects, other };
+          }
+
+          // 2. Batch Request Signed URLs
+          const { data: signedData, error: signError } = await supabase.storage
+            .from('checklists')
+            .createSignedUrls(allPaths, 3600);
+
+          if (signError) {
+             console.error('Error signing URLs:', signError);
+             return { subjects, other };
+          }
+
+          // 3. Create Lookup Map
+          const urlMap = {};
+          signedData.forEach(item => {
+             if (item.path && item.signedUrl) {
+                urlMap[item.path] = item.signedUrl;
+             }
+          });
+
+          // 4. Map back to structure
+          const newSubjects = subjects.map(sub => ({
+             ...sub,
+             docs: (sub.docs || []).map(d => ({
+                ...d,
+                preview: urlMap[d.path]
+             }))
           }));
+
+          const newOther = other.map(item => ({
+             ...item,
+             docs: (item.docs || []).map(d => ({
+                ...d,
+                preview: urlMap[d.path]
+             }))
+          }));
+
+          return { subjects: newSubjects, other: newOther };
         };
 
-        const hydratedSubjects = await hydrateDocs(data.subjects || []);
-        const hydratedOther = await hydrateDocs(data.other_docs || []);
+        const { subjects: hydratedSubjects, other: hydratedOther } = await hydrateDocs(data);
 
         setChecklist({
           id: data.id,
@@ -289,6 +350,8 @@ export default function FacultyDashboard() {
   const handleFileUpload = async (key, files) => {
     if (!files || files.length === 0) return;
     
+    // Set specific item as uploading
+    setUploadingItems(prev => ({ ...prev, [key]: true }));
     addToast('Uploading to Supabase Storage...', 'info');
     
     try {
@@ -335,26 +398,43 @@ export default function FacultyDashboard() {
       // Update State IMMUTABLY
       setChecklist(prev => {
         // Deep copy the relevant arrays to avoid mutation
-        const updatedSubjects = prev.subjects.map(s => s.id === itemId && type === 'subject' 
-          ? { ...s, docs: [...s.docs, ...newDocs] } 
-          : s
-        );
+        const updatedSubjects = prev.subjects.map(s => {
+          if (s.id === itemId && type === 'subject') {
+             // Clear rejection for this specific doc type if it was rejected
+             const newRejectedTypes = s.rejected_types 
+                 ? s.rejected_types.filter(t => t !== docName)
+                 : s.rejected_types;
+             
+             return { 
+                 ...s, 
+                 docs: [...s.docs, ...newDocs],
+                 rejected_types: newRejectedTypes 
+             };
+          }
+          return s;
+        });
         
-        const updatedOther = prev.other_docs.map(o => o.id === itemId && type === 'other'
-          ? { ...o, docs: [...o.docs, ...newDocs] }
-          : o
-        );
+        const updatedOther = prev.other_docs.map(o => {
+          if (o.id === itemId && type === 'other') {
+             return { 
+                 ...o, 
+                 docs: [...o.docs, ...newDocs],
+                 rejected: false // Clear rejection flag
+             };
+          }
+          return o;
+        });
         
         const newState = {
           ...prev,
           subjects: updatedSubjects,
-          other_docs: updatedOther
+          other_docs: updatedOther,
+          // If the status was 'revision', reset to 'pending' (or active) immediately on upload
+          // This allows the faculty to address specific rejections without needing to complete the entire checklist
+          status: prev.status === 'revision' ? 'pending' : prev.status
         };
 
         // Sync with DB
-        // Fire-and-forget DB update or await it? 
-        // Better to await to ensure consistency, but inside setState is tricky.
-        // We will call the DB update explicitly with the NEW state data.
         updateChecklistInDB(newState);
 
         return newState;
@@ -364,6 +444,9 @@ export default function FacultyDashboard() {
     } catch (err) {
       console.error('Upload Error:', err);
       addToast('Upload failed: ' + err.message, 'error');
+    } finally {
+      // Clear specific item uploading status
+      setUploadingItems(prev => ({ ...prev, [key]: false }));
     }
   };
 
@@ -380,6 +463,7 @@ export default function FacultyDashboard() {
               ...o, 
               docs: o.docs.map(d => ({ ...d, preview: undefined })) 
           })),
+          status: state.status, // Sync status as well
           updated_at: new Date().toISOString()
         })
         .eq('id', state.id);
@@ -570,6 +654,16 @@ export default function FacultyDashboard() {
           </div>
         )}
 
+        {checklist.status === 'revision' && (
+          <div className="alert alert-warning animate-pulse-yellow" style={{ marginBottom: 'var(--space-6)', display: 'flex', alignItems: 'center', gap: 'var(--space-3)', borderLeft: '4px solid #f59e0b' }}>
+            <span style={{ fontSize: '1.5rem' }}>⚠️</span>
+            <div>
+              <strong style={{ display: 'block' }}>Updates Requested by Admin</strong>
+              <span style={{ fontSize: 'var(--text-sm)' }}>The Chair has rejected one or more documents. Please replace the missing files to proceed.</span>
+            </div>
+          </div>
+        )}
+
         {/* Page Title & History Selector */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
           <div>
@@ -708,16 +802,37 @@ export default function FacultyDashboard() {
                       const hasUpload = uploads[key];
                       const isReadOnly = selectedTerm !== 'LIVE';
                       
+                      const isRejected = subject.rejected_types?.includes(doc);
+
+                      const isUploading = uploadingItems[key];
+                      
                       return (
-                        <td key={docIdx} data-label={doc}>
-                          <div className="file-cell" style={{ textAlign: 'right', justifyContent: 'flex-end', display: 'flex' }}>
-                            {hasUpload ? (
+                        <td key={docIdx} data-label={doc} style={isRejected ? { backgroundColor: '#fee2e2', position: 'relative', border: '1px solid #ef4444' } : {}}>
+                          {isRejected && (
+                             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, fontSize: '9px', background: '#ef4444', color: 'white', textAlign: 'center', fontWeight: 'bold', padding: '1px' }}>REJECTED</div>
+                          )}
+                          <div className="file-cell" style={{ textAlign: 'right', justifyContent: 'flex-end', display: 'flex', paddingTop: isRejected ? '12px' : '0' }}>
+                            {isUploading ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--brand-blue)', fontSize: '12px', fontWeight: 'bold' }}>
+                                <div className="spinner" style={{ width: '16px', height: '16px', borderTopColor: 'var(--brand-blue)', borderWidth: '2px' }}></div>
+                                Uploading...
+                              </div>
+                            ) : hasUpload ? (
                               <div className="file-present">
                                 <PhotoGrid 
                                   uploads={uploads[key]} 
                                   onRemove={isReadOnly ? null : (idx) => removeUpload(key, idx)} 
                                   disabled={isReadOnly}
                                   deadline={checklist.deadline}
+                                  onPreview={(file, allFiles, index) => {
+                                    setPreviewState({
+                                      isOpen: true,
+                                      imageSrc: file.preview,
+                                      files: allFiles,
+                                      currentIndex: index,
+                                      zoom: 1
+                                    });
+                                  }}
                                 />
                                 {!isReadOnly && (
                                   <label className="btn-add-mini" title="Add more photos">
@@ -779,10 +894,15 @@ export default function FacultyDashboard() {
                   
                   const isReadOnly = selectedTerm !== 'LIVE';
                   
+                  const isRejected = item.rejected;
+                  
                   return (
                     <tr key={idx}>
-                      <td data-label="Document"><strong>{item.name || 'Unknown Document'}</strong></td>
-                        <td data-label="Status" style={{ verticalAlign: 'middle' }}>
+                      <td data-label="Document" style={isRejected ? { backgroundColor: '#fee2e2', borderLeft: '4px solid #ef4444' } : {}}>
+                        <strong>{item.name || 'Unknown Document'}</strong>
+                        {isRejected && <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold', marginTop: '4px' }}>⚠️ ACTION REQUIRED: RE-UPLOAD</div>}
+                      </td>
+                        <td data-label="Status" style={{ verticalAlign: 'middle', backgroundColor: isRejected ? '#fee2e2' : 'transparent' }}>
                           {!hasUpload ? (
                             <label className={`upload-btn ${isReadOnly ? 'disabled' : ''}`} style={{ width: '100%', maxWidth: '200px', marginLeft: 'auto' }} htmlFor={key}>
                               📤 Upload Proof
@@ -805,6 +925,15 @@ export default function FacultyDashboard() {
                                 onRemove={isReadOnly ? null : (idx) => removeUpload(key, idx)}
                                 disabled={isReadOnly}
                                 deadline={checklist.deadline}
+                                onPreview={(file, allFiles, index) => {
+                                  setPreviewState({
+                                    isOpen: true,
+                                    imageSrc: file.preview,
+                                    files: allFiles,
+                                    currentIndex: index,
+                                    zoom: 1
+                                  });
+                                }}
                               />
                               {!isReadOnly && (
                                 <label className="btn btn-sm btn-outline">
@@ -946,6 +1075,83 @@ export default function FacultyDashboard() {
           </div>
         )}
       </main>
+      {/* Image Preview Modal */}
+      {previewState.isOpen && (
+        <div className="modal-overlay" style={{ zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.9)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content" style={{ width: '100%', height: '100%', background: 'transparent', boxShadow: 'none', padding: 0, position: 'relative' }} onClick={e => e.stopPropagation()}>
+             
+             {/* Toolbar */}
+             <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
+               <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.min(prev.zoom + 0.5, 3) }))}>➕ Zoom In</button>
+               <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.max(prev.zoom - 0.5, 0.5) }))}>➖ Zoom Out</button>
+               <button className="btn btn-sm" style={{ background: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none' }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false, zoom: 1 }))}>❌ Close</button>
+             </div>
+
+             {/* Navigation - Left */}
+             {previewState.files.length > 1 && (
+               <button 
+                 style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer', padding: '20px', borderRadius: '10px', backdropFilter: 'blur(2px)', zIndex: 5 }}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   setPreviewState(prev => {
+                     const newIndex = (prev.currentIndex - 1 + prev.files.length) % prev.files.length;
+                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1 };
+                   });
+                 }}
+               >
+                 ‹
+               </button>
+             )}
+
+             {/* Main Image Container */}
+             <div style={{ overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+               <div style={{ 
+                 transform: `scale(${previewState.zoom})`, 
+                 transition: 'transform 0.2s ease',
+                 display: 'flex',
+                 justifyContent: 'center',
+                 alignItems: 'center'
+               }}>
+                 <img 
+                   src={previewState.imageSrc} 
+                   style={{ 
+                     maxHeight: '90vh', 
+                     maxWidth: '90vw', 
+                     objectFit: 'contain',
+                     boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                     borderRadius: '4px'
+                   }} 
+                   alt="Preview" 
+                   draggable={false}
+                 />
+               </div>
+             </div>
+
+             {/* Navigation - Right */}
+             {previewState.files.length > 1 && (
+               <button 
+                 style={{ position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer', padding: '20px', borderRadius: '10px', backdropFilter: 'blur(2px)', zIndex: 5 }}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   setPreviewState(prev => {
+                     const newIndex = (prev.currentIndex + 1) % prev.files.length;
+                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1 };
+                   });
+                 }}
+               >
+                 ›
+               </button>
+             )}
+
+             {/* Caption */}
+             <div style={{ position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)', color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px 25px', borderRadius: '30px', textAlign: 'center', backdropFilter: 'blur(5px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+               <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{previewState.files[previewState.currentIndex]?.name}</div>
+               <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Image {previewState.currentIndex + 1} of {previewState.files.length}</div>
+             </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -123,10 +123,6 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="system-status" style={{ marginTop: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', justifyContent: 'center', color: 'var(--gray-400)', fontSize: 'var(--text-xs)' }}>
-        <div className="status-dot online" style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22c55e' }}></div>
-        <span>Supabase Backend Operational</span>
-      </div>
     </div>
   );
 }

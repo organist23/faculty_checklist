@@ -39,7 +39,7 @@ const PhotoGrid = ({ uploads, onPreview, deadline }) => {
           <div 
             key={idx} 
             className={`photo-thumbnail ${statusClass}`}
-            onClick={() => onPreview(file.preview)}
+            onClick={() => onPreview(file, uploads, idx)}
             style={{ position: 'relative', cursor: 'pointer' }}
             title={`Uploaded: ${new Date(file.uploadedAt || Date.now()).toLocaleString()} (${isLate ? 'LATE' : 'On-time'})`}
           >
@@ -126,20 +126,40 @@ export default function ChecklistView() {
       if (error) throw error;
 
       // Hydrate previews for documents
-      const hydrateDocs = async (docList) => {
-        return await Promise.all(docList.map(async item => {
-          const docsWithPreviews = await Promise.all(item.docs.map(async doc => {
-             const { data: signData } = await supabase.storage
-               .from('checklists')
-               .createSignedUrl(doc.path, 3600);
-             return { ...doc, preview: signData?.signedUrl };
-          }));
-          return { ...item, docs: docsWithPreviews };
-        }));
+      // Batched Hydration for Admin View
+      const hydrateAllDocs = async () => {
+         const subjects = data.subjects || [];
+         const other = data.other_docs || [];
+         
+         const allPaths = [];
+         subjects.forEach(s => s.docs?.forEach(d => allPaths.push(d.path)));
+         other.forEach(o => o.docs?.forEach(d => allPaths.push(d.path)));
+
+         if (allPaths.length === 0) return { subjects, other };
+
+         const { data: signedData, error: signError } = await supabase.storage
+            .from('checklists')
+            .createSignedUrls(allPaths, 3600);
+
+         if (signError) {
+             console.error('Error signing URLs:', signError);
+             return { subjects, other };
+         }
+
+         const urlMap = {};
+         signedData?.forEach(item => {
+             if (item.path && item.signedUrl) urlMap[item.path] = item.signedUrl;
+         });
+
+         const mapDocs = (list) => list.map(item => ({
+             ...item,
+             docs: (item.docs || []).map(d => ({ ...d, preview: urlMap[d.path] }))
+         }));
+
+         return { subjects: mapDocs(subjects), other: mapDocs(other) };
       };
 
-      const hydratedSubjects = await hydrateDocs(data.subjects);
-      const hydratedOther = await hydrateDocs(data.other_docs);
+      const { subjects: hydratedSubjects, other: hydratedOther } = await hydrateAllDocs();
 
       // Map to UI-friendly structure
       const uploadsMap = {};
@@ -189,10 +209,19 @@ export default function ChecklistView() {
     }
   };
   
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [selectedImageKey, setSelectedImageKey] = useState(null);
+  /* Removed legacy state */
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  
+  // Enhanced Preview State
+  const [previewState, setPreviewState] = useState({
+    isOpen: false,
+    imageSrc: null,
+    files: [], 
+    currentIndex: 0,
+    zoom: 1,
+    contextKey: null // To track which slot we are in for rejection
+  });
 
   const calculateLatestUpload = () => {
     const allDocs = [
@@ -229,22 +258,18 @@ export default function ChecklistView() {
     }
   };
 
-  const handleRemovePhoto = async () => {
-    if (!selectedImageKey) return;
+  const handleRemovePhoto = async (key, docToRemove) => {
+    if (!key || !docToRemove) return;
     
     const confirmReject = window.confirm('Are you sure you want to reject and remove this document?');
     if (confirmReject) {
       try {
-        // Find the specific doc in the state map
-        const docs = checklist.uploads[selectedImageKey];
+        // Find the specific doc in the state map to verify it exists
+        const docs = checklist.uploads[key];
         if (!docs || docs.length === 0) return;
         
-        // Use the viewed image logic better: 
-        // If we viewed a specific URL, try to find that specific doc in the list?
-        // Current implementation of PhotoGrid -> onPreview passes the URL.
-        // We set selectedImage = url.
-        // Let's filter by the preview URL to be precise if possible, else index 0.
-        const docToRemove = docs.find(d => d.preview === selectedImage) || docs[0];
+        // Use the passed doc directly
+        // const docToRemove = docs.find(d => d.preview === selectedImage) || docs[0];
 
         // 1. Delete from Storage
         const { error: storageError } = await supabase.storage
@@ -267,22 +292,43 @@ export default function ChecklistView() {
         let updatedSubjects = [...latestChecklist.subjects];
         let updatedOther = [...latestChecklist.other_docs];
 
-        if (selectedImageKey.startsWith('subject-')) {
-           const parts = selectedImageKey.split('-');
-           // parts: ["subject", "sub", "0", "0"]
-           const subId = parts.slice(1, -1).join('-'); // "sub-0"
+        if (key.startsWith('subject-')) {
+           const parts = key.split('-');
+           // Key format: subject-[id]-[docIdx]
+           // If id contains dashes (like UUID), we need to handle it.
+           // However, local keys are constructed as: `subject-${subject.id}-${docIdx}`
+           // subject.id comes from database (UUID or integer).
+           // If UUID: subject-123e4567-e89b...-0
+           // The LAST part is always docIdx. The first part is 'subject'. The middle is ID.
+           
+           const docIdx = parts[parts.length - 1];
+           const subId = parts.slice(1, -1).join('-'); 
            
            updatedSubjects = updatedSubjects.map(s => {
              if (s.id === subId) {
                const newDocs = s.docs.filter(d => d.path !== docToRemove.path);
-               return { ...s, docs: newDocs };
+               // Track the rejected document type so we can highlight it
+               const rejectedType = docToRemove.type; 
+               const currentRejections = s.rejected_types || [];
+               
+               // Add to rejection list if not already there
+               const newRejections = rejectedType && !currentRejections.includes(rejectedType)
+                 ? [...currentRejections, rejectedType]
+                 : currentRejections;
+
+               return { ...s, docs: newDocs, rejected_types: newRejections };
              }
              return s;
            });
         } else {
            updatedOther = updatedOther.map(o => {
-             if (o.id === selectedImageKey) {
-               return { ...o, docs: o.docs.filter(d => d.path !== docToRemove.path) };
+             if (o.id === key) {
+               // For 'other' docs, the item itself is the 'type', so we just mark the item as rejected
+               return { 
+                 ...o, 
+                 docs: o.docs.filter(d => d.path !== docToRemove.path),
+                 rejected: true 
+               };
              }
              return o;
            });
@@ -307,8 +353,9 @@ export default function ChecklistView() {
 
         addToast('Document rejected. Faculty notified for revision.', 'info');
         fetchChecklist(); 
-        setSelectedImage(null);
-        setSelectedImageKey(null);
+        setPreviewState(prev => ({ ...prev, isOpen: false })); // Close modal after reject
+        // setSelectedImage(null);
+        // setSelectedImageKey(null);
 
       } catch (err) {
         console.error('Rejection Error:', err);
@@ -397,7 +444,7 @@ export default function ChecklistView() {
               <tbody>
                 {checklist.subjects.map((subject) => (
                   <tr key={subject.id}>
-                    <td>
+                    <td data-label="Subject">
                       <strong>{subject.name}</strong><br />
                       <small className="text-gray">
                         {subject.code} - {subject.course} {subject.section}
@@ -408,15 +455,21 @@ export default function ChecklistView() {
                       const upload = checklist.uploads[key];
                       
                       return (
-                        <td key={docIdx}>
+                        <td key={docIdx} data-label={doc}>
                           {getUploadStatus(key)}
                           {upload && (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
                               <PhotoGrid 
                                 uploads={upload} 
-                                onPreview={(url) => {
-                                  setSelectedImage(url);
-                                  setSelectedImageKey(key);
+                                onPreview={(file, allFiles, index) => {
+                                  setPreviewState({
+                                    isOpen: true,
+                                    imageSrc: file.preview,
+                                    files: allFiles,
+                                    currentIndex: index,
+                                    zoom: 1,
+                                    contextKey: key
+                                  });
                                 }} 
                                 deadline={checklist.deadline}
                               />
@@ -457,15 +510,21 @@ export default function ChecklistView() {
                   
                   return (
                     <tr key={idx}>
-                      <td><strong>{doc}</strong></td>
-                      <td>{getUploadStatus(key)}</td>
-                      <td>
+                      <td data-label="Document"><strong>{doc}</strong></td>
+                      <td data-label="Status">{getUploadStatus(key)}</td>
+                      <td data-label="Preview">
                         {upload && (
                           <PhotoGrid 
                             uploads={upload} 
-                            onPreview={(url) => {
-                              setSelectedImage(url);
-                              setSelectedImageKey(key);
+                            onPreview={(file, allFiles, index) => {
+                              setPreviewState({
+                                isOpen: true,
+                                imageSrc: file.preview,
+                                files: allFiles,
+                                currentIndex: index,
+                                zoom: 1,
+                                contextKey: key
+                              });
                             }} 
                             deadline={checklist.deadline}
                           />
@@ -501,40 +560,91 @@ export default function ChecklistView() {
         </div>
       </main>
 
-      {/* Image Modal */}
-      {selectedImage && (
-        <div 
-          className="modal-backdrop"
-          onClick={() => setSelectedImage(null)}
-        >
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 className="modal-title">Document Preview</h3>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                <button 
-                  className="btn btn-danger btn-sm"
-                  onClick={handleRemovePhoto}
-                >
-                  Reject & Remove
-                </button>
-                <button 
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => {
-                    setSelectedImage(null);
-                    setSelectedImageKey(null);
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-            <div className="modal-body" style={{ textAlign: 'center' }}>
-              <img 
-                src={selectedImage} 
-                alt="Document preview" 
-                style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)' }}
-              />
-            </div>
+      {/* Enhanced Image Modal */}
+      {previewState.isOpen && (
+        <div className="modal-overlay" style={{ zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.9)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-content" style={{ width: '100%', height: '100%', background: 'transparent', boxShadow: 'none', padding: 0, position: 'relative' }} onClick={e => e.stopPropagation()}>
+             
+             {/* Toolbar */}
+             <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
+               <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.min(prev.zoom + 0.5, 3) }))}>➕ Zoom In</button>
+               <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.max(prev.zoom - 0.5, 0.5) }))}>➖ Zoom Out</button>
+               
+               {/* Reject Button */}
+               <button 
+                 className="btn btn-sm" 
+                 style={{ background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', marginLeft: '10px' }} 
+                 onClick={() => handleRemovePhoto(previewState.contextKey, previewState.files[previewState.currentIndex])}
+                 title="Reject this specific document"
+               >
+                 🗑️ Reject
+               </button>
+
+               <button className="btn btn-sm" style={{ background: 'rgba(75, 85, 99, 0.9)', color: 'white', border: 'none' }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false, zoom: 1 }))}>❌ Close</button>
+             </div>
+
+             {/* Navigation - Left */}
+             {previewState.files.length > 1 && (
+               <button 
+                 style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer', padding: '20px', borderRadius: '10px', backdropFilter: 'blur(2px)', zIndex: 5 }}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   setPreviewState(prev => {
+                     const newIndex = (prev.currentIndex - 1 + prev.files.length) % prev.files.length;
+                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1 };
+                   });
+                 }}
+               >
+                 ‹
+               </button>
+             )}
+
+             {/* Main Image Container */}
+             <div style={{ overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+               <div style={{ 
+                 transform: `scale(${previewState.zoom})`, 
+                 transition: 'transform 0.2s ease',
+                 display: 'flex',
+                 justifyContent: 'center',
+                 alignItems: 'center'
+               }}>
+                 <img 
+                   src={previewState.imageSrc} 
+                   style={{ 
+                     maxHeight: '90vh', 
+                     maxWidth: '90vw', 
+                     objectFit: 'contain',
+                     boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+                     borderRadius: '4px'
+                   }} 
+                   alt="Preview" 
+                   draggable={false}
+                 />
+               </div>
+             </div>
+
+             {/* Navigation - Right */}
+             {previewState.files.length > 1 && (
+               <button 
+                 style={{ position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer', padding: '20px', borderRadius: '10px', backdropFilter: 'blur(2px)', zIndex: 5 }}
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   setPreviewState(prev => {
+                     const newIndex = (prev.currentIndex + 1) % prev.files.length;
+                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1 };
+                   });
+                 }}
+               >
+                 ›
+               </button>
+             )}
+
+             {/* Caption */}
+             <div style={{ position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)', color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px 25px', borderRadius: '30px', textAlign: 'center', backdropFilter: 'blur(5px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+               <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{previewState.files[previewState.currentIndex]?.name}</div>
+               <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Image {previewState.currentIndex + 1} of {previewState.files.length}</div>
+             </div>
+
           </div>
         </div>
       )}
