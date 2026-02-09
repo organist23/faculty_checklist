@@ -146,11 +146,7 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
         </div>
       )}
 
-      {status === 'revision' && (
-        <div className="alert alert-warning" style={{ marginTop: 'var(--space-4)' }}>
-          ⚠️ Updates requested by Admin. Please check your documents and re-upload.
-        </div>
-      )}
+
     </div>
   );
 }
