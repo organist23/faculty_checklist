@@ -17,6 +17,17 @@ export default function ManageFaculty() {
   
   useEffect(() => {
     fetchFaculty();
+
+    const channel = supabase
+      .channel('manage-faculty-list')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'faculty_profiles' }, () => {
+        fetchFaculty();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchFaculty = async () => {
@@ -42,26 +53,15 @@ export default function ManageFaculty() {
     department: 'BPED',
     college: 'CTED',
     password: '',
-    subjects: ['']
   });
 
-  const handleSubjectChange = (index, value) => {
-    const newSubjects = [...formData.subjects];
-    newSubjects[index] = value;
-    setFormData({ ...formData, subjects: newSubjects });
-  };
 
-  const addSubjectField = () => {
-    setFormData({ ...formData, subjects: [...formData.subjects, ''] });
-  };
-
-  const removeSubjectField = (index) => {
-    setFormData({ ...formData, subjects: formData.subjects.filter((_, i) => i !== index) });
-  };
 
   const filteredFaculty = facultyList.filter(f => 
-    f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    f.department.toLowerCase().includes(searchTerm.toLowerCase())
+    f.name !== 'System Admin' && (
+      f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.department.toLowerCase().includes(searchTerm.toLowerCase())
+    )
   );
 
   const handleSubmit = async (e) => {
@@ -119,7 +119,6 @@ export default function ManageFaculty() {
         .update({
           department: formData.department,
           college: formData.college,
-          default_subjects: formData.subjects,
           visible_password: formData.password
         })
         .eq('id', newUserId);
@@ -134,7 +133,6 @@ export default function ManageFaculty() {
         department: 'BPED',
         college: 'CTED',
         password: '',
-        subjects: ['']
       });
       fetchFaculty();
       
@@ -269,55 +267,7 @@ export default function ManageFaculty() {
                   </select>
                 </div>
               </div>
-              <div className="form-group mb-6">
-                <label className="form-label">Teaching Subjects (Default)</label>
-                <div className="subjects-input-mesh" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 'var(--space-2)' }}>
-                  {formData.subjects.map((sub, idx) => (
-                    <div key={idx} style={{ position: 'relative' }}>
-                      <input 
-                        type="text" 
-                        className="form-input" 
-                        placeholder="e.g. P.E. 101"
-                        value={sub}
-                        onChange={e => handleSubjectChange(idx, e.target.value)}
-                        style={{ paddingRight: 'var(--space-8)', fontSize: 'var(--text-xs)' }}
-                      />
-                      {formData.subjects.length > 1 && (
-                        <button 
-                          type="button" 
-                          onClick={() => removeSubjectField(idx)}
-                          style={{ 
-                            position: 'absolute', 
-                            right: '4px', 
-                            top: '50%', 
-                            transform: 'translateY(-50%)',
-                            background: 'var(--nvsu-red-pale)',
-                            color: 'var(--nvsu-red)',
-                            border: 'none',
-                            borderRadius: '4px',
-                            width: '20px',
-                            height: '20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '10px',
-                            cursor: 'pointer'
-                          }}
-                        >✕</button>
-                      )}
-                    </div>
-                  ))}
-                  <button 
-                    type="button" 
-                    className="btn btn-sm btn-outline" 
-                    onClick={addSubjectField}
-                    style={{ borderStyle: 'dashed', height: '100%', minHeight: '38px', fontSize: 'var(--text-xs)' }}
-                  >
-                    + Add More
-                  </button>
-                </div>
-                <p className="text-gray mt-2" style={{ fontSize: 'var(--text-xs)' }}>These subjects will generate document requirements for the faculty member.</p>
-              </div>
+
 
               <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-8)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--gray-100)' }}>
                 <button type="submit" className="btn btn-primary" style={{ flex: 2 }}>Create Faculty Account</button>

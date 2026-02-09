@@ -5,7 +5,10 @@ import DeadlineBanner from '../components/DeadlineBanner';
 import { useSystem } from '../context/SystemContext';
 import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 import { supabase } from '../supabase';
+import { isPastTerm } from '../utils/termHelpers';
 
 const DEFAULT_DOCUMENTS = {
   subjects: [
@@ -78,7 +81,7 @@ const PhotoGrid = ({ uploads, onRemove, disabled, deadline, onPreview }) => {
 };
 
 export default function FacultyDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { settings } = useSystem();
   const { addToast } = useToast();
   const { confirm, showAlert } = useConfirm();
@@ -91,12 +94,16 @@ export default function FacultyDashboard() {
     loading: true
   });
   
-
   const [selectedTerm, setSelectedTerm] = useState('LIVE');
   const [availableTerms, setAvailableTerms] = useState([]);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState({ current: 0, total: 0 });
   const [uploadingItems, setUploadingItems] = useState({}); // Track uploading status per item key
+  const [showSubjectManager, setShowSubjectManager] = useState(false);
+  const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
+  const [subjectError, setSubjectError] = useState('');
   
   // Enhanced Preview State
   const [previewState, setPreviewState] = useState({
@@ -107,6 +114,14 @@ export default function FacultyDashboard() {
     zoom: 1,
     contextKey: null // Track context for removal
   });
+
+  // Auto-switch to LIVE view when global settings change (e.g. Admin starts new semester)
+  useEffect(() => {
+    if (settings.semester && settings.academicYear) {
+       console.log('Global settings changed, switching to LIVE view.');
+       setSelectedTerm('LIVE');
+    }
+  }, [settings.semester, settings.academicYear]);
 
   useEffect(() => {
     if (user?.id) {
@@ -155,6 +170,20 @@ export default function FacultyDashboard() {
       if (error) throw error;
       const terms = [...new Set(data.map(c => c.term_id))];
       setAvailableTerms(terms);
+      
+      // Smart Auto-Switch Logic REMOVED/DISABLED:
+      // We should NOT force switch the user to a newer term if they explicitly selected something else.
+      // The default behavior should be to respect the user's selection or default to LIVE only on initial load.
+      /*
+      if (settings.semester && settings.academicYear) {
+          const currentTermId = `${settings.academicYear}-${settings.semester}`;
+          const newerTerm = terms.find(t => t > currentTermId);
+          if (newerTerm && selectedTerm === 'LIVE') {
+             console.log('Found newer term than settings, auto-switching:', newerTerm);
+             setSelectedTerm(newerTerm);
+          }
+      }
+      */
     } catch (err) {
       console.error('Fetch Terms Error:', err);
     }
@@ -165,8 +194,17 @@ export default function FacultyDashboard() {
       if (!isBackground) {
         setChecklist(prev => ({ ...prev, loading: true }));
       }
+      const normalize = (s) => {
+        if (!s) return s;
+        const up = s.toString().toUpperCase().trim();
+        if (up === '1') return 'FIRST SEMESTER';
+        if (up === '2') return 'SECOND SEMESTER';
+        return up;
+      };
+
+      const normSem = normalize(settings.semester);
       const termId = selectedTerm === 'LIVE' 
-        ? `${settings.academicYear}-${settings.semester}` 
+        ? `${settings.academicYear}-${normSem}` 
         : selectedTerm;
 
       // 1. Try to find existing checklist
@@ -181,14 +219,7 @@ export default function FacultyDashboard() {
 
       // 2. If not found and it's for the LIVE term, create one
       if (!data && selectedTerm === 'LIVE') {
-        const initialSubjects = user.default_subjects?.map((name, idx) => ({
-          id: `sub-${idx}`,
-          name,
-          code: `CODE-${idx}`,
-          course: 'N/A',
-          section: 'N/A',
-          docs: []
-        })) || [];
+        const initialSubjects = [];
 
         const initialOther = DEFAULT_DOCUMENTS.other.map((name, idx) => ({
           id: `other-${idx}`,
@@ -286,13 +317,19 @@ export default function FacultyDashboard() {
 
         const { subjects: hydratedSubjects, other: hydratedOther } = await hydrateDocs(data);
 
-        setChecklist({
-          id: data.id,
-          status: data.status,
-          college: user.college,
-          department: user.department,
-          semester: settings.semester,
-          academicYear: settings.academicYear,
+          
+          const parts = data.term_id.split('-');
+          const ay = parts.length >= 2 ? `${parts[0]}-${parts[1]}` : settings.academicYear;
+          const sem = parts.length >= 3 ? parts.slice(2).join(' ') : settings.semester;
+
+          setChecklist({
+            id: data.id,
+            term_id: data.term_id,
+            status: data.status,
+            college: user.college,
+            department: user.department,
+            semester: sem,
+            academicYear: ay,
           deadline: settings.deadline,
           subjects: hydratedSubjects,
           other_docs: hydratedOther,
@@ -303,6 +340,14 @@ export default function FacultyDashboard() {
       }
     } catch (err) {
       console.error('Checklist Load Error:', err);
+      
+      // CRITICAL: Handle "Ghost Faculty" (Profile deleted but session active)
+      if (err.code === '23503' && err.message?.includes('faculty_profiles')) {
+        console.warn('Faculty profile not found. Forcing logout.');
+        logout();
+        return;
+      }
+
       setChecklist(prev => ({ ...prev, loading: false, error: err.message }));
     }
   };
@@ -350,11 +395,232 @@ export default function FacultyDashboard() {
     });
   }
 
+  const handleAddSubject = async () => {
+    if (!subjectForm.name.trim() || !subjectForm.code.trim()) {
+      setSubjectError('Subject Name and Code are required.');
+      return;
+    }
+
+    if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
+      addToast('Cannot manage subjects in past semesters.', 'error');
+      return;
+    }
+    
+    // Check for duplicate names (optional but good)
+    const normalizedName = subjectForm.name.trim().toLowerCase();
+    if (checklist.subjects.some(s => s.name.toLowerCase() === normalizedName)) {
+      setSubjectError('A subject with this name already exists.');
+      return;
+    }
+
+    setSubjectError('');
+    const newId = `sub-${Date.now()}`;
+    
+    const newSubject = {
+      id: newId,
+      name: subjectForm.name.trim(),
+      code: subjectForm.code.trim(),
+      course: 'N/A', 
+      section: 'N/A',
+      docs: []
+    };
+
+    // Optimistic Update
+    const newSubjects = [...checklist.subjects, newSubject];
+    setChecklist(prev => ({ ...prev, subjects: newSubjects }));
+    setSubjectForm({ name: '', code: '' });
+    setShowSubjectManager(false);
+    addToast('Subject added successfully!', 'success');
+
+    try {
+      const { error } = await supabase
+        .from('checklists')
+        .update({
+          subjects: newSubjects.map(s => ({
+            ...s,
+            docs: (s.docs || []).map(d => ({ ...d, preview: undefined })) // Clean preview URLs
+          })),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', checklist.id);
+
+      if (error) {
+        throw error;
+        // In a real app, rollback optimistic update here
+      }
+    } catch (err) {
+      console.error('Error adding subject:', err);
+      addToast('Failed to save subject to server.', 'error');
+    }
+  };
+
+  const handleDeleteSubject = async (subjectId) => {
+    const subject = checklist.subjects.find(s => s.id === subjectId);
+    if (!subject) return;
+
+    if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
+      addToast('Cannot manage subjects in past semesters.', 'error');
+      return;
+    }
+
+    if (subject.docs && subject.docs.length > 0) {
+      const confirmed = await confirm(
+        `This subject has ${subject.docs.length} uploaded document(s). Deleting it will PERMANENTLY REMOVE these documents. Continue?`,
+        'Delete Subject & Files'
+      );
+      if (!confirmed) return;
+      
+      try {
+        // Attempt to delete files from storage
+        const paths = subject.docs.map(d => d.path);
+        if (paths.length > 0) {
+           await supabase.storage.from('checklists').remove(paths);
+        }
+      } catch (e) {
+        console.error('Error deleting files:', e);
+      }
+    } else {
+      const confirmed = await confirm('Are you sure you want to delete this subject?', 'Delete Subject');
+      if (!confirmed) return;
+    }
+
+    // Optimistic
+    const newSubjects = checklist.subjects.filter(s => s.id !== subjectId);
+    setChecklist(prev => ({ ...prev, subjects: newSubjects }));
+    addToast('Subject deleted.', 'info');
+
+    try {
+      await supabase
+        .from('checklists')
+        .update({
+          subjects: newSubjects.map(s => ({
+            ...s,
+            docs: (s.docs || []).map(d => ({ ...d, preview: undefined }))
+          })),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', checklist.id);
+    } catch (err) {
+      console.error('Error deleting subject:', err);
+      addToast('Failed to sync deletion.', 'error');
+    }
+  };
+
+  const handleUpdateSubject = async (id, newName, newCode) => {
+    if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
+      addToast('Cannot manage subjects in past semesters.', 'error');
+      return;
+    }
+
+    // Optimistic
+    const newSubjects = checklist.subjects.map(s => 
+      s.id === id ? { ...s, name: newName, code: newCode } : s
+    );
+    setChecklist(prev => ({ ...prev, subjects: newSubjects }));
+    addToast('Subject updated.', 'success');
+
+    try {
+      await supabase
+        .from('checklists')
+        .update({
+          subjects: newSubjects.map(s => ({
+            ...s,
+            docs: (s.docs || []).map(d => ({ ...d, preview: undefined }))
+          })),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', checklist.id);
+    } catch (err) {
+      console.error('Error update subject:', err);
+      addToast('Failed to sync update.', 'error');
+    }
+  };
+
+  const handleDownloadArchive = async () => {
+    const termName = selectedTerm === 'LIVE' 
+        ? `${settings.academicYear}-${settings.semester}` 
+        : selectedTerm;
+    const readableTerm = termName.split('-').length >= 3 
+        ? `AY ${termName.split('-').slice(0, 2).join('-')} - ${termName.split('-').slice(2).join(' ')}`
+        : termName;
+
+    const isConfirmed = await confirm(
+      `Download ZIP archive for ${readableTerm}?`,
+      'Confirm Download'
+    );
+
+    if (!isConfirmed) return;
+
+    try {
+      setIsExporting(true);
+      const zip = new JSZip();
+      
+      // Calculate total files for progress
+      const totalFiles = (checklist.subjects || []).reduce((acc, s) => acc + (s.docs || []).length, 0) +
+                         (checklist.other_docs || []).reduce((acc, o) => acc + (o.docs || []).length, 0);
+      
+      setExportProgress({ current: 0, total: totalFiles });
+      let processed = 0;
+
+      const mainFolder = zip.folder(`My_Compliance_${termName}`);
+
+      // 1. Subjects
+      const subjectFolder = mainFolder.folder('Section 1 - Subjects');
+      for (const sub of checklist.subjects) {
+        const subSubFolder = subjectFolder.folder(sub.name);
+        for (const doc of (sub.docs || [])) {
+          const typeFolder = subSubFolder.folder(doc.type || 'Other');
+          try {
+             const { data, error } = await supabase.storage.from('checklists').download(doc.path);
+             if (error) throw error;
+             typeFolder.file(doc.name, data);
+          } catch (e) {
+             console.error('Download error:', e);
+          }
+          processed++;
+          setExportProgress({ current: processed, total: totalFiles });
+        }
+      }
+
+      // 2. Other Docs
+      const otherFolder = mainFolder.folder('Section 2 - Other Documents');
+      for (const other of checklist.other_docs) {
+        const docFolder = otherFolder.folder(other.name);
+        for (const docFile of (other.docs || [])) {
+          try {
+             const { data, error } = await supabase.storage.from('checklists').download(docFile.path);
+             if (error) throw error;
+             docFolder.file(docFile.name, data);
+          } catch (e) {
+             console.error('Download error:', e);
+          }
+          processed++;
+          setExportProgress({ current: processed, total: totalFiles });
+        }
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      saveAs(content, `NVSU_Credentials_${user.name.replace(/ /g, '_')}_${termName}.zip`);
+      addToast('Archive downloaded successfully!', 'success');
+    } catch (err) {
+      console.error('Export error:', err);
+      addToast('Failed to generate archive: ' + err.message, 'error');
+    } finally {
+      setIsExporting(false);
+      setExportProgress({ current: 0, total: 0 });
+    }
+  };
+
   const handleFileUpload = async (key, files) => {
     if (!files || files.length === 0) return;
     
     if (!navigator.onLine) {
        addToast('No internet connection. Please check your network.', 'error');
+       return;
+    }
+    
+    if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
+       addToast('Cannot upload documents for past semesters.', 'error');
        return;
     }
     
@@ -376,8 +642,15 @@ export default function FacultyDashboard() {
          docName = DEFAULT_DOCUMENTS.subjects[docIdx];
       }
 
+      const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
       const newDocs = [];
       for (const file of Array.from(files)) {
+        // Size validation
+        if (file.size > MAX_FILE_SIZE) {
+          addToast(`File ${file.name} exceeds the 20MB limit.`, 'error');
+          continue; // Skip this file
+        }
+
         // Unique filename with random string to prevent collisions
         const uniqueSuffix = Math.random().toString(36).substring(2, 15);
         const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -396,6 +669,7 @@ export default function FacultyDashboard() {
         newDocs.push({
           name: file.name,
           path: filePath,
+          size: file.size, // Store file size in bytes
           preview: signData?.signedUrl,
           uploadedAt: new Date().toISOString(),
           type: docName 
@@ -475,7 +749,14 @@ export default function FacultyDashboard() {
         })
         .eq('id', state.id);
         
-      if (error) console.error('DB Auto-save failed:', error);
+      if (error) {
+        console.error('DB Auto-save failed:', error);
+        
+        // Handle "Ghost Faculty" on auto-save
+        if (error.code === '23503' && error.message?.includes('faculty_profiles')) {
+          logout();
+        }
+      }
     } catch (err) {
       console.error('DB Update Exception:', err);
     }
@@ -484,6 +765,11 @@ export default function FacultyDashboard() {
   const removeUpload = async (key, fileIndex) => {
     if (!navigator.onLine) {
        addToast('No internet connection. Cannot remove file.', 'error');
+       return;
+    }
+    const isEditable = selectedTerm === 'LIVE' || !isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
+    if (!isEditable) {
+       addToast('Cannot remove documents from previous semesters.', 'error');
        return;
     }
     try {
@@ -570,7 +856,7 @@ export default function FacultyDashboard() {
         return newState;
       });
 
-      addToast('Document removed.', 'info');
+      addToast('Document removed.', 'success');
     } catch (err) {
       console.error('Remove Error:', err);
       addToast('Failed to remove document: ' + err.message, 'error');
@@ -667,7 +953,7 @@ export default function FacultyDashboard() {
         {!checklist.error && (<>
         {/* Deadline Banner */}
         <DeadlineBanner 
-          deadline={checklist.deadline}
+          deadline={selectedTerm === 'LIVE' ? settings.deadline : checklist.deadline}
           submittedAt={checklist.submittedAt}
           status={checklist.status}
           latestUploadAt={latestUploadAt}
@@ -701,21 +987,70 @@ export default function FacultyDashboard() {
             <p className="text-gray">Faculty Compliance Checklist Dashboard</p>
           </div>
 
-          <div className="history-picker" style={{ minWidth: '240px' }}>
-            <label className="form-label" style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', color: 'var(--brand-blue)' }}>
-              📂 Past Semester History (Read-Only)
-            </label>
-            <select 
-              className="form-select" 
-              value={selectedTerm}
-              onChange={(e) => setSelectedTerm(e.target.value)}
-              style={{ borderColor: selectedTerm === 'LIVE' ? 'var(--brand-green)' : 'var(--brand-blue)', borderWidth: '2px' }}
-            >
-              <option value="LIVE">Active Semester (Current)</option>
-              <optgroup label="Archived in Supabase">
-                <option value="2024-2025-SEM2">AY 2024-2025 - 2nd Semester</option>
-              </optgroup>
-            </select>
+          <div className="history-picker" style={{ 
+            display: 'flex', 
+            flexDirection: 'row', 
+            alignItems: 'flex-end', 
+            gap: '10px',
+            width: '100%',
+            maxWidth: 'none',
+            flexWrap: 'wrap' 
+          }}>
+            <div style={{ flex: '1 1 240px' }}>
+              <label className="form-label" style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', color: 'var(--brand-blue)' }}>
+                📂 Past Semester History (Read-Only)
+              </label>
+                <select 
+                  className="form-select" 
+                  value={selectedTerm}
+                  onChange={(e) => setSelectedTerm(e.target.value)}
+                  style={{ minWidth: '220px', border: '2px solid var(--nvsu-green-dark)' }}
+                >
+                  <option value="LIVE">🟢 Current: {settings.semester} ({settings.academicYear})</option>
+                  {availableTerms
+                    .filter(t => {
+                      const normCurrent = `${settings.academicYear}-${settings.semester}`;
+                      // Normalize the archived term for comparison
+                      const parts = t.split('-');
+                      if (parts.length < 2) return true;
+                      const ay = `${parts[0]}-${parts[1]}`;
+                      let sem = parts.slice(2).join(' ').trim().toUpperCase();
+                      if (sem === '1') sem = 'FIRST SEMESTER';
+                      if (sem === '2') sem = 'SECOND SEMESTER';
+                      
+                      return `${ay}-${sem}` !== normCurrent;
+                    })
+                    .map(term => (
+                      <option key={term} value={term}>📂 Archive: {term.replace(/-/g, ' ')}</option>
+                    ))
+                  }
+                </select>
+            </div>
+            {selectedTerm !== 'LIVE' && (
+              <button 
+                className={`btn ${isExporting ? 'btn-secondary' : 'btn-primary'}`}
+                style={{ 
+                  height: '42px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  gap: '8px', 
+                  flex: '1 1 180px',
+                  minWidth: '200px'
+                }}
+                onClick={handleDownloadArchive}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <>
+                    <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', borderTopColor: 'white' }}></div>
+                    <span>{exportProgress.total > 0 ? `${Math.round((exportProgress.current / exportProgress.total) * 100)}% Bundling...` : 'Processing...'}</span>
+                  </>
+                ) : (
+                  <>📥 Download Semester ZIP</>
+                )}
+              </button>
+            )}
           </div>
         </div>
 
@@ -805,9 +1140,112 @@ export default function FacultyDashboard() {
 
         {/* Section 1: Documents by Subject */}
         <div className="card mb-6">
-          <div className="card-header">
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="card-title">Section 1: Documents by Subject</h2>
+            {/* Show Manage Subjects for LIVE, Current, or Future terms */}
+            {(selectedTerm === 'LIVE' || !isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) && (
+              <button 
+                className="btn btn-secondary" 
+                style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                onClick={() => setShowSubjectManager(true)}
+              >
+                ⚙️ Manage Subjects
+              </button>
+            )}
           </div>
+          
+          {/* Subject Manager Modal */}
+          {showSubjectManager && (
+            <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+              <div className="modal" style={{ maxWidth: '700px', width: '90%' }}>
+                <div className="modal-header">
+                  <h3 className="modal-title">Manage Subjects</h3>
+                  <button onClick={() => setShowSubjectManager(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
+                </div>
+                <div className="modal-body">
+                  {/* Add New Subject Form */}
+                  <div style={{ background: 'var(--gray-50)', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid var(--gray-200)' }}>
+                      <h4 style={{ fontSize: '12px', marginBottom: '10px', textTransform: 'uppercase', color: 'var(--gray-600)', fontWeight: 'bold' }}>Add New Subject</h4>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="Subject Code (e.g. IT 101)" 
+                          value={subjectForm.code}
+                          onChange={e => setSubjectForm(prev => ({ ...prev, code: e.target.value }))}
+                          style={{ flex: 1, minWidth: '120px' }}
+                        />
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="Descriptive Title" 
+                          value={subjectForm.name}
+                          onChange={e => setSubjectForm(prev => ({ ...prev, name: e.target.value }))}
+                          style={{ flex: 2, minWidth: '200px' }}
+                        />
+                        <button className="btn btn-primary" onClick={handleAddSubject}>Add Subject</button>
+                      </div>
+                      {subjectError && <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>⚠️ {subjectError}</p>}
+                  </div>
+
+                  {/* List of Existing Subjects */}
+                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                      <table className="table" style={{ fontSize: '14px' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ width: '120px' }}>Code</th>
+                            <th>Title</th>
+                            <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {checklist.subjects.map(sub => (
+                            <tr key={sub.id}>
+                              <td style={{ padding: '8px' }}>
+                                  <input 
+                                    defaultValue={sub.code} 
+                                    onBlur={(e) => {
+                                      if (e.target.value !== sub.code) handleUpdateSubject(sub.id, sub.name, e.target.value);
+                                    }}
+                                    className="form-input"
+                                    style={{ padding: '4px 8px', width: '100%' }}
+                                  />
+                              </td>
+                              <td style={{ padding: '8px' }}>
+                                  <input 
+                                    defaultValue={sub.name} 
+                                    onBlur={(e) => {
+                                      if (e.target.value !== sub.name) handleUpdateSubject(sub.id, e.target.value, sub.code);
+                                    }}
+                                    className="form-input"
+                                    style={{ padding: '4px 8px', width: '100%' }}
+                                  />
+                              </td>
+                              <td style={{ textAlign: 'center', padding: '8px' }}>
+                                  <button 
+                                    className="btn btn-sm"
+                                    style={{ color: 'white', background: '#ef4444', border: 'none', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} 
+                                    onClick={() => handleDeleteSubject(sub.id)}
+                                    title="Delete Subject"
+                                  >
+                                    ✕
+                                  </button>
+                              </td>
+                            </tr>
+                          ))}
+                          {checklist.subjects.length === 0 && (
+                              <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '20px' }}>No subjects added yet. Add one above!</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button className="btn btn-secondary" onClick={() => setShowSubjectManager(false)}>Done</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="table-responsive">
             <table className="table">
               <thead>
@@ -827,7 +1265,7 @@ export default function FacultyDashboard() {
                     {DEFAULT_DOCUMENTS.subjects.map((doc, docIdx) => {
                       const key = `subject-${subject.id}-${docIdx}`;
                       const hasUpload = uploads[key];
-                      const isReadOnly = selectedTerm !== 'LIVE';
+                      const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
                       
                       const isRejected = subject.rejected_types?.includes(doc);
 
@@ -904,7 +1342,7 @@ export default function FacultyDashboard() {
         {/* Section 2: Other Documents */}
         <div className="card mb-6">
           <div className="card-header">
-            <h2 className="card-title">Section 2: Other Documents (One-Time Submission)</h2>
+            <h2 className="card-title">Section 2: Other Documents</h2>
           </div>
           <div className="table-responsive">
             <table className="table">
@@ -920,7 +1358,7 @@ export default function FacultyDashboard() {
                   const key = `other-${idx}`;
                   const hasUpload = uploads[key];
                   
-                  const isReadOnly = selectedTerm !== 'LIVE';
+                  const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
                   
                   const isRejected = item.rejected;
                   
@@ -1017,7 +1455,6 @@ export default function FacultyDashboard() {
             </div>
           </div>
 
-          {(
             <div style={{ marginTop: 'var(--space-6)', textAlign: 'center' }}>
               <button 
                 className="btn btn-primary btn-lg"
@@ -1034,7 +1471,6 @@ export default function FacultyDashboard() {
                 You can continue to update your submission until allowed by your Chair.
               </p>
             </div>
-          )}
 
           {checklist.status === 'approved' && (
             <div className="alert alert-success" style={{ marginTop: 'var(--space-6)' }}>
@@ -1120,16 +1556,33 @@ export default function FacultyDashboard() {
                <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.min(prev.zoom + 0.5, 3) }))}>➕ Zoom In</button>
                <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.max(prev.zoom - 0.5, 0.5) }))}>➖ Zoom Out</button>
                
-               {/* Remove Button - Only if not read-only (LIVE term) */}
-               {selectedTerm === 'LIVE' && (
+               {/* Remove Button - Editable if LIVE or Future/Current Term */}
+               {(selectedTerm === 'LIVE' || (checklist.term_id >= `${settings.academicYear}-${settings.semester}`)) && (
                   <button 
                     className="btn btn-sm" 
                     style={{ background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', marginLeft: '10px' }}
                     onClick={async () => {
                        const confirmed = await confirm('Are you sure you want to remove this file?', 'Remove Document');
                        if (confirmed) {
-                          removeUpload(previewState.contextKey, previewState.currentIndex);
-                          setPreviewState(prev => ({ ...prev, isOpen: false }));
+                          const currentFiles = previewState.files;
+                          const currentIndex = previewState.currentIndex;
+                          const contextKey = previewState.contextKey;
+
+                          removeUpload(contextKey, currentIndex);
+
+                          const newFiles = currentFiles.filter((_, idx) => idx !== currentIndex);
+                          if (newFiles.length === 0) {
+                             setPreviewState(prev => ({ ...prev, isOpen: false }));
+                          } else {
+                             const nextIndex = currentIndex < newFiles.length ? currentIndex : newFiles.length - 1;
+                             setPreviewState(prev => ({
+                                ...prev,
+                                files: newFiles,
+                                currentIndex: nextIndex,
+                                imageSrc: newFiles[nextIndex].preview,
+                                zoom: 1
+                             }));
+                          }
                        }
                     }}
                   >

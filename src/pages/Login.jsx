@@ -105,14 +105,13 @@ export default function Login() {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--space-6)' }}>
-            <button 
-              type="button"
+            <Link 
+              to="/forgot-password"
               className="link-btn"
-              onClick={() => showAlert("Please contact the CTED-BPED Office or IT center to reset your institutional credentials.", "Account Recovery")}
-              style={{ padding: 0, background: 'none', border: 'none', color: 'var(--nvsu-green)', fontWeight: '600', cursor: 'pointer' }}
+              style={{ padding: 0, background: 'none', border: 'none', color: 'var(--nvsu-green)', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', fontSize: '14px' }}
             >
               Forgot password?
-            </button>
+            </Link>
           </div>
 
           <button 

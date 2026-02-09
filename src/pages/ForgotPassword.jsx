@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-
+import { useAuth } from '../context/AuthContext';
 export default function ForgotPassword() {
+  const { resetPasswordForEmail } = useAuth();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
@@ -18,11 +19,15 @@ export default function ForgotPassword() {
 
     setLoading(true);
     
-    // Pure Mock Reset Logic
-    setTimeout(() => {
-      setSent(true);
-      setLoading(false);
-    }, 1000);
+    // Use Real Auth Context
+    const { success, error: apiError } = await resetPasswordForEmail(email);
+    
+    if (success) {
+       setSent(true);
+    } else {
+       setError(apiError || 'Failed to send reset link. Please check the email and try again.');
+    }
+    setLoading(false);
   };
 
   if (sent) {

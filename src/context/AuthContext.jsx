@@ -107,15 +107,16 @@ export const AuthProvider = ({ children }) => {
         .eq('id', uid)
         .single();
 
-      if (error) {
-         // ... (existing logging logic)
-         throw error;
+      if (error) throw error;
+      
+      // CRITICAL CHECK: If profile is deleted (null data), do NOT allow login.
+      if (!data) {
+        throw new Error('Profile not found in database.');
       }
 
       console.log('Profile fetched successfully:', data);
       
       // RACING CONDITION FIX V2: Check the synchronous ref
-      // If the user signed out while we were awaiting the DB, the event would be SIGNED_OUT
       if (latestEvent.current === 'SIGNED_OUT') {
         console.warn('Discarding profile fetch: User signed out during fetch.');
         return;
@@ -127,15 +128,19 @@ export const AuthProvider = ({ children }) => {
         loading: false,
         error: null
       });
+      return true; // Success
     } catch (err) {
       console.error('fetchProfile Catch Block:', err);
-      // Even if profile fetch fails, we keep the user authenticated but maybe with limited data
+      // FORCE LOGOUT if profile is missing. Do NOT allow "ghost" sessions.
+      await supabase.auth.signOut(); 
+      
       setAuthState({
-        user: { id: uid, email, role: 'faculty' }, // Default fallback
-        isAuthenticated: true,
+        user: null,
+        isAuthenticated: false,
         loading: false,
-        error: 'Profile not found. Please contact admin.'
+        error: 'Account not authorized. Your profile may have been deleted by Admin.'
       });
+      return false; // Failed
     }
   };
 
@@ -150,6 +155,20 @@ export const AuthProvider = ({ children }) => {
     if (error) {
       setAuthState(prev => ({ ...prev, loading: false, error: error.message }));
       return { success: false, error: error.message };
+    }
+
+    // EXPLICITLY wait for profile fetch to ensure state is updated before navigation
+    if (data.user) {
+      try {
+        const profileSuccess = await fetchProfile(data.user.id, data.user.email);
+        
+        if (!profileSuccess) {
+           return { success: false, error: 'Account not authorized. Your profile may have been deleted by Admin.' };
+        }
+      } catch (profileErr) {
+        console.error('Login Profile Fetch Fail:', profileErr);
+        return { success: false, error: 'Profile verification failed.' };
+      }
     }
 
     return { success: true, user: data.user };
@@ -173,13 +192,54 @@ export const AuthProvider = ({ children }) => {
   };
 
   const resetPasswordForEmail = async (email) => {
-    return await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/update-password`,
-    });
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/update-password`,
+      });
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   };
 
   const updatePassword = async (newPassword) => {
-    return await supabase.auth.updateUser({ password: newPassword });
+    try {
+      // 1. Update the actual Supabase Auth password
+      const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      
+      // 2. Resolve User ID to ensure we target the correct profile
+      let userId = data.user?.id;
+      if (!userId) {
+         const { data: userData } = await supabase.auth.getUser();
+         userId = userData.user?.id;
+      }
+
+      // 3. Sync to faculty_profiles for "Visible Password" (Admin View)
+      if (userId) {
+        console.log("Attempting to sync visible_password for:", userId);
+        const { error: profileError } = await supabase
+          .from('faculty_profiles')
+          .update({ visible_password: newPassword })
+          .eq('id', userId);
+          
+        if (profileError) {
+           console.error("CRITICAL: Profile Sync Failed. Admin view will be outdated.", profileError);
+           // NOTE: We do not throw here because the main auth password WAS changed successfully.
+           // Throwing would confuse the user into thinking the password reset failed.
+        } else {
+           console.log("Profile Sync Successful");
+        }
+      } else {
+         console.warn("Authentication State Warning: Could not resolve User ID for profile sync.");
+      }
+      
+      return { success: true, data };
+    } catch (error) {
+      console.error("Password Update Error:", error);
+      return { success: false, error: error.message };
+    }
   };
 
   const clearError = () => {

@@ -93,7 +93,7 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
     return () => clearInterval(interval);
   }, [deadline, submittedAt, settings.deadlineEnabled, status]);
 
-  if (!deadline) {
+  if (!deadline && settings.deadlineEnabled) {
     return null;
   }
 

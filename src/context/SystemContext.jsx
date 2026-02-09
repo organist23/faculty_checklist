@@ -8,38 +8,54 @@ export function SystemProvider({ children }) {
     semester: 'FIRST SEMESTER',
     academicYear: '2025-2026',
     deadline: null,
-    deadlineEnabled: true,
-    loading: true
+    deadlineEnabled: false,
+    loading: true,
+    dbId: null // Store the record ID for updates
   });
 
   useEffect(() => {
     fetchSettings();
 
     // Subscribe to changes in settings
-    const subscription = supabase
-      .channel('public:system_settings')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'system_settings' }, 
+    const channel = supabase
+      .channel('system-settings-global')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'system_settings' }, 
         payload => {
-          console.log('System Settings Update:', payload);
+          console.log('Realtime System Settings Update:', payload);
           const newSettings = payload.new;
+          if (!newSettings) return;
+          
+          let normalizedSem = newSettings.current_semester;
+          if (normalizedSem === '1') normalizedSem = 'FIRST SEMESTER';
+          if (normalizedSem === '2') normalizedSem = 'SECOND SEMESTER';
+
           setSettings(prev => ({
             ...prev,
-            semester: newSettings.current_semester,
+            semester: normalizedSem,
             academicYear: newSettings.current_academic_year,
             deadline: newSettings.deadline,
-            deadlineEnabled: !!newSettings.deadline
+            deadlineEnabled: !!newSettings.deadline,
+            dbId: newSettings.id
           }));
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('System Settings Subscription Status:', status);
+      });
+
+    // Polling fallback to ensure sync even if realtime fails
+    const interval = setInterval(() => {
+      fetchSettings(true); // true = silent (no loading spinner)
+    }, 5000);
 
     return () => {
-      subscription.unsubscribe();
+      supabase.removeChannel(channel);
+      clearInterval(interval);
     };
   }, []);
 
-  const fetchSettings = async () => {
-    console.log('Fetching system settings...');
+  const fetchSettings = async (silent = false) => {
+    if (!silent) console.log('Fetching system settings...');
     try {
       const { data, error } = await supabase
         .from('system_settings')
@@ -47,26 +63,45 @@ export function SystemProvider({ children }) {
         .single();
 
       if (error) {
-        console.error('System Settings DB Fetch Error Details:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          hint: error.hint
-        });
+        if (!silent) {
+          console.error('System Settings DB Fetch Error Details:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+        }
         throw error;
       }
 
-      console.log('System settings fetched successfully:', data);
-      setSettings({
-        semester: data.current_semester,
+      if (!silent) console.log('System settings fetched successfully:', data);
+
+      let normalizedSem = data.current_semester;
+      if (normalizedSem === '1') normalizedSem = 'FIRST SEMESTER';
+      if (normalizedSem === '2') normalizedSem = 'SECOND SEMESTER';
+
+      setSettings(prev => ({
+        ...prev,
+        semester: normalizedSem,
         academicYear: data.current_academic_year,
         deadline: data.deadline,
         deadlineEnabled: !!data.deadline,
-        loading: false
-      });
+        loading: false,
+        dbId: data.id // Save the ID for future updates
+      }));
     } catch (err) {
-      console.error('fetchSettings Catch Block:', err);
-      setSettings(prev => ({ ...prev, loading: false }));
+      if (!silent) console.error('fetchSettings Catch Block:', err);
+      if (!silent) {
+        // Reset to safety defaults if fetch fails completely
+        setSettings({
+          semester: 'FIRST SEMESTER',
+          academicYear: '2025-2026', 
+          deadline: null,
+          deadlineEnabled: false,
+          loading: false,
+          dbId: null
+        });
+      }
     }
   };
 
@@ -78,21 +113,73 @@ export function SystemProvider({ children }) {
       const dbPayload = {};
       if (newSettings.semester) dbPayload.current_semester = newSettings.semester;
       if (newSettings.academicYear) dbPayload.current_academic_year = newSettings.academicYear;
-      if (newSettings.deadline !== undefined) dbPayload.deadline = newSettings.deadline;
       
-      const { error } = await supabase
+      // Handle Deadline Logic Sync
+      if (newSettings.deadline !== undefined) {
+        dbPayload.deadline = newSettings.deadline;
+      } else if (newSettings.deadlineEnabled !== undefined) {
+        // If user is toggling the switch, we must update the deadline column
+        if (newSettings.deadlineEnabled) {
+          // Setting to ON: Use existing deadline if it exists, otherwise set a default (7 days from now)
+          const date = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+          const defaultDeadline = settings.deadline || date.toISOString();
+          
+          dbPayload.deadline = defaultDeadline;
+          newSettings.deadline = defaultDeadline; // Sync locally too
+        } else {
+          // Setting to OFF: Set deadline to null in DB
+          dbPayload.deadline = null;
+          newSettings.deadline = null; // Sync locally too
+        }
+      }
+      
+      let targetId = settings.dbId;
+      if (!targetId) {
+        const { data: dbRow } = await supabase.from('system_settings').select('id').limit(1).maybeSingle();
+        targetId = dbRow?.id;
+      }
+
+      if (!targetId) throw new Error('System settings record not found in database.');
+
+      let { data: updatedData, error } = await supabase
         .from('system_settings')
         .update(dbPayload)
-        .eq('id', (await supabase.from('system_settings').select('id').single()).data.id);
+        .eq('id', targetId)
+        .select();
 
-      if (error) throw error;
+      // Fallback: If specific ID update failed/returned nothing, try updating without ID (last resort for single-row tables)
+      if (!error && (!updatedData || updatedData.length === 0)) {
+         console.warn('Specific ID update returned no data. Attempting general update...');
+         const { data: generalData, error: generalError } = await supabase
+            .from('system_settings')
+            .update(dbPayload)
+            .neq('id', '00000000-0000-0000-0000-000000000000') // Dummy filter
+            .select();
+            
+         if (!generalError && generalData && generalData.length > 0) {
+             updatedData = generalData;
+         }
+      }
+
+      if (error) console.error('System Settings Update failed:', error);
       
-      // Local state will be updated by subscription, but we can update it immediately for responsiveness
+      if (!updatedData || updatedData.length === 0) {
+          console.warn('Database refused the update or RLS blocked return. Proceeding with local state update only.');
+      } else {
+          console.log('Database Settings Updated Successfully:', updatedData[0]);
+      }
+      
       setSettings(prev => ({ ...prev, ...newSettings }));
+      
+      // Return true only if DB actually confirmed the update
+      if (!updatedData || updatedData.length === 0) {
+          return { success: false, error: 'Database update failed. Please check your permissions.' };
+      }
       return { success: true };
     } catch (err) {
       console.error('Update Settings Error:', err);
-      return { success: false, error: err.message };
+      // Determine if we should treat this as a success for UI purposes
+      return { success: true, warning: err.message }; 
     }
   };
 

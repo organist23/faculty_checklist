@@ -323,7 +323,6 @@ export default function ChecklistView() {
     
     const confirmed = await confirm('Are you sure you want to reject and remove this document?', 'Reject Document');
     if (confirmed) {
-      addToast('Processing rejection...', 'info'); // Immediate feedback
       try {
         // Find the specific doc in the state map to verify it exists
         const docs = checklist.uploads[key];
@@ -413,7 +412,25 @@ export default function ChecklistView() {
         }
 
         fetchChecklist(); 
-        setPreviewState(prev => ({ ...prev, isOpen: false })); // Close modal after reject
+        
+        // Update local modal state to show next image
+        setPreviewState(prev => {
+           const newFiles = prev.files.filter(f => f.path !== docToRemove.path);
+           if (newFiles.length === 0) {
+              return { ...prev, isOpen: false };
+           } else {
+              const nextIndex = prev.currentIndex < newFiles.length ? prev.currentIndex : newFiles.length - 1;
+              return {
+                 ...prev,
+                 files: newFiles,
+                 currentIndex: nextIndex,
+                 imageSrc: newFiles[nextIndex].preview,
+                 zoom: 1
+              };
+           }
+        });
+        
+        addToast('Document rejected and removed.', 'success');
         // setSelectedImage(null);
         // setSelectedImageKey(null);
 
@@ -537,7 +554,6 @@ export default function ChecklistView() {
                 {checklist.subjects.map((subject) => (
                   <tr key={subject.id}>
                     <td data-label="Subject">
-                      <strong>{subject.name}</strong><br />
                       <strong>{subject.name}</strong>
                     </td>
                     {checklist.documentsBySubject.map((doc, docIdx) => {

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 export default function UpdatePassword() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { updatePassword } = useAuth();
+  const { updatePassword, logout } = useAuth();
   
   const [formData, setFormData] = useState({
     password: '',
@@ -70,6 +70,9 @@ export default function UpdatePassword() {
     const result = await updatePassword(formData.password);
     
     if (result.success) {
+      // Force logout so user has to sign in with new credentials
+      await logout();
+
       setSuccess(true);
       setTimeout(() => {
         navigate('/login');
