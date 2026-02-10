@@ -76,16 +76,13 @@ export default function ForgotPassword() {
     <div className="login-container">
       <div className="login-card" style={{ maxWidth: '450px' }}>
         <div className="login-header">
-          <img 
-            src="/Logo/educlogo.jpg" 
-            alt="NVSU Logo" 
-            className="login-logo"
-          />
-          <h1 className="login-title" style={{ fontSize: 'var(--text-3xl)', letterSpacing: '-0.02em' }}>
-            Forgot Password?
-          </h1>
-          <p className="login-subtitle" style={{ fontWeight: '400', color: 'var(--gray-500)', fontSize: 'var(--text-sm)' }}>
-            Enter your email to receive reset instructions
+          <div className="logo-badge mb-4" style={{ textAlign: 'center' }}>
+            <img src="/Logo/educlogo.jpg" alt="NVSU Logo" style={{ width: '100px', height: '100px', objectFit: 'contain', marginBottom: '1rem' }} />
+          </div>
+          <h1 className="login-title" style={{ fontSize: 'var(--text-3xl)', letterSpacing: '-0.02em', textAlign: 'center' }}>NVSU CTED-BPED</h1>
+          <p className="login-subtitle" style={{ fontWeight: '600', color: 'var(--nvsu-green)', textAlign: 'center' }}>
+            Password Recovery<br />
+            <span style={{ fontWeight: '400', color: 'var(--gray-500)', fontSize: 'var(--text-sm)' }}>Faculty Compliance System</span>
           </p>
         </div>
 
