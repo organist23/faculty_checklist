@@ -15,7 +15,7 @@ const DEFAULT_DOCUMENTS = {
   ],
   other: [
     'Faculty Workload', 'IPCR – Target', 'IPCR – Final with Rating',
-    'Student Consultation', 'Student Evaluation (FPESf)', 
+    'Student Consultation Form', 'Student Evaluation (FPESf)', 
     'Superior\'s Evaluation (FPESu)', 'Classroom Observation',
     'Accomplishment Report – Quarter 1', 'Accomplishment Report – Quarter 2',
     'Seminar / Training Certificate/s', 'Membership ID / Certificate/s',
