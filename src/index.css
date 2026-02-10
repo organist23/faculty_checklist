@@ -910,6 +910,56 @@ a:hover {
   color: var(--brand-green);
 }
 
+.camera-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  background: white;
+  border: 2px solid var(--brand-blue);
+  border-radius: var(--radius-lg);
+  color: var(--brand-blue-dark);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.camera-btn:hover:not(.disabled) {
+  background: var(--brand-blue-pale);
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+}
+
+.camera-btn.disabled {
+  background-color: var(--gray-100);
+  border-color: var(--gray-200);
+  color: var(--gray-400);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn-add-mini {
+  width: 32px;
+  height: 32px;
+  background: var(--gray-50);
+  border: 1px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--transition-bounce);
+  color: var(--gray-600);
+}
+
+.btn-add-mini:hover {
+  background: var(--brand-blue-pale);
+  border-color: var(--brand-blue);
+  color: var(--brand-blue);
+  transform: scale(1.1);
+}
+
 .upload-status {
   font-size: 10px;
   padding: 2px 4px;

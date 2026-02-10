@@ -105,6 +105,13 @@ export default function FacultyDashboard() {
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
   const [subjectError, setSubjectError] = useState('');
   
+  // Media Capture Modal State
+  const [mediaCapture, setMediaCapture] = useState({
+    isOpen: false,
+    key: null,
+    docName: null
+  });
+
   // Enhanced Preview State
   const [previewState, setPreviewState] = useState({
     isOpen: false,
@@ -1211,32 +1218,25 @@ export default function FacultyDashboard() {
                                   }}
                                 />
                                 {!isReadOnly && (
-                                  <label className="btn-add-mini" title="Add more photos">
+                                  <button 
+                                     className="btn-add-mini" 
+                                     title="Add more photos"
+                                     onClick={() => setMediaCapture({ isOpen: true, key, docName: doc })}
+                                  >
                                     +
-                                    <input
-                                      type="file"
-                                      multiple
-                                      accept="image/*"
-                                      onChange={(e) => handleFileUpload(key, e.target.files)}
-                                      style={{ display: 'none' }}
-                                    />
-                                  </label>
+                                  </button>
                                 )}
                               </div>
                             ) : (
-                              <label className={`upload-btn ${isReadOnly ? 'disabled' : ''}`} htmlFor={key} style={{ padding: 'var(--space-2)', minWidth: '80px', alignSelf: 'flex-end' }}>
-                                <input
-                                  id={key}
-                                  type="file"
-                                  multiple
-                                  accept="image/*"
-                                  onChange={(e) => handleFileUpload(key, e.target.files)}
-                                  disabled={isReadOnly}
-                                  hidden
-                                />
-                                <span className="upload-icon" aria-hidden="true">+</span>
-                                <span style={{ fontSize: '10px', marginTop: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>{doc}</span>
-                              </label>
+                              <button 
+                                className={`upload-btn ${isReadOnly ? 'disabled' : ''}`} 
+                                style={{ padding: 'var(--space-2)', minWidth: '80px', alignSelf: 'flex-end', background: 'var(--brand-blue-pale)', border: '1px solid var(--brand-blue)', color: 'var(--brand-blue-dark)' }}
+                                onClick={() => !isReadOnly && setMediaCapture({ isOpen: true, key, docName: doc })}
+                                disabled={isReadOnly}
+                              >
+                                <span style={{ fontSize: '14px' }}>📤</span>
+                                <span style={{ fontSize: '10px', fontWeight: 'bold' }}>UPLOAD</span>
+                              </button>
                             )}
                           </div>
                         </td>
@@ -1285,17 +1285,14 @@ export default function FacultyDashboard() {
                                 Uploading...
                               </div>
                           ) : !hasUpload ? (
-                            <label className={`upload-btn ${isReadOnly ? 'disabled' : ''}`} style={{ width: '100%', maxWidth: '200px', marginLeft: 'auto' }} htmlFor={key}>
-                              📤 Upload Proof
-                              <input
-                                id={key}
-                                type="file"
-                                accept="image/jpeg,image/jpg,image/png"
-                                multiple
-                                onChange={(e) => handleFileUpload(key, e.target.files)}
+                            <button 
+                                className={`btn btn-sm ${isReadOnly ? 'disabled' : ''}`} 
+                                style={{ marginLeft: 'auto', background: 'var(--brand-blue-pale)', border: '2px solid var(--brand-blue)', color: 'var(--brand-blue-dark)', fontWeight: '800' }}
+                                onClick={() => !isReadOnly && setMediaCapture({ isOpen: true, key: key, docName: item.name })}
                                 disabled={isReadOnly}
-                              />
-                            </label>
+                            >
+                                📤 UPLOAD PROOF
+                            </button>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', justifyContent: 'flex-end' }}>
                               <div className="upload-status uploaded">
@@ -1318,16 +1315,13 @@ export default function FacultyDashboard() {
                                 }}
                               />
                                 {!isReadOnly && (
-                                  <label className="btn-add-mini" title="Add more documents">
+                                  <button 
+                                     className="btn-add-mini" 
+                                     title="Add more documents"
+                                     onClick={() => setMediaCapture({ isOpen: true, key: key, docName: item.name })}
+                                  >
                                     +
-                                    <input
-                                      type="file"
-                                      accept="image/jpeg,image/png"
-                                      multiple
-                                      onChange={(e) => handleFileUpload(key, e.target.files)}
-                                      style={{ display: 'none' }}
-                                    />
-                                  </label>
+                                  </button>
                                 )}
                             </div>
                           )}
@@ -1656,6 +1650,73 @@ export default function FacultyDashboard() {
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setShowSubjectManager(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Media Capture Choice Modal */}
+      {mediaCapture.isOpen && (
+        <div className="modal-backdrop" style={{ zIndex: 1200 }}>
+          <div className="modal" style={{ maxWidth: '400px', width: '95%', borderRadius: 'var(--radius-xl)' }}>
+            <div className="modal-header" style={{ borderBottom: '1px solid var(--gray-100)', padding: 'var(--space-6) var(--space-6) var(--space-4)' }}>
+              <div>
+                <h3 className="modal-title" style={{ fontSize: '1.2rem', color: 'var(--brand-blue-dark)' }}>Upload Document</h3>
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--gray-500)' }}>{mediaCapture.docName}</p>
+              </div>
+              <button 
+                onClick={() => setMediaCapture({ isOpen: false, key: null, docName: null })} 
+                style={{ background: 'var(--gray-100)', border: 'none', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--gray-600)' }}
+              >✕</button>
+            </div>
+            <div className="modal-body" style={{ padding: 'var(--space-8) var(--space-6)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                {/* Camera Option */}
+                <label className="camera-btn" style={{ padding: 'var(--space-6) var(--space-4)', height: '140px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', flexShrink: 0 }}>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment" 
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleFileUpload(mediaCapture.key, e.target.files);
+                      }
+                      setMediaCapture({ isOpen: false, key: null, docName: null });
+                    }}
+                    hidden 
+                  />
+                  <span style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>📸</span>
+                  <span style={{ fontWeight: '800', fontSize: 'var(--text-sm)', letterSpacing: '0.5px' }}>TAKE PHOTO</span>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '4px' }}>Using Camera</span>
+                </label>
+
+                {/* Gallery Option */}
+                <label className="upload-btn" style={{ padding: 'var(--space-6) var(--space-4)', height: '140px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', borderStyle: 'solid', borderColor: 'var(--brand-green)', display: 'flex', flexDirection: 'column' }}>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    multiple
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleFileUpload(mediaCapture.key, e.target.files);
+                      }
+                      setMediaCapture({ isOpen: false, key: null, docName: null });
+                    }}
+                    hidden 
+                  />
+                  <span style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>🖼️</span>
+                  <span style={{ fontWeight: '800', fontSize: 'var(--text-sm)', letterSpacing: '0.5px' }}>GALLERY</span>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '4px' }}>Choose Existing</span>
+                </label>
+              </div>
+            </div>
+            <div className="modal-footer" style={{ borderTop: 'none', padding: '0 var(--space-6) var(--space-6)' }}>
+              <button 
+                className="btn btn-secondary" 
+                style={{ width: '100%', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}
+                onClick={() => setMediaCapture({ isOpen: false, key: null, docName: null })}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
