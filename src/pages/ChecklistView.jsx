@@ -188,15 +188,10 @@ export default function ChecklistView() {
          });
       });
       
-      hydratedOther.forEach((item, idx) => {
-         // For 'other' docs, the item itself is the container
-         // item.id should already be 'other-0', 'other-1', etc. but let's be safe
-         // In FacultyDashboard it maps to 'other-idx'. 
-         // Here `hydratedOther` is the array of items.
-         // item.id is likely 'other-0'.
-         if (item.docs && item.docs.length > 0) {
-            uploadsMap[item.id] = item.docs;
-         }
+      hydratedOther.forEach((item) => {
+          if (item.docs && item.docs.length > 0 && item.name) {
+             uploadsMap[item.name] = item.docs;
+          }
       });
 
       setChecklist(prev => ({
@@ -380,9 +375,9 @@ export default function ChecklistView() {
              }
              return s;
            });
-        } else {
+        } else { // This is an 'other' document, keyed by its name
            updatedOther = updatedOther.map(o => {
-             if (o.id === key) {
+             if (o.name === key) { // Match by name, not by item.id
                // For 'other' docs, the item itself is the 'type', so we just mark the item as rejected
                return { 
                  ...o, 
@@ -466,8 +461,8 @@ export default function ChecklistView() {
          if (subject && subject.rejected_types && subject.rejected_types.includes(docName)) {
            isRejected = true;
          }
-      } else if (key.startsWith('other-')) {
-         const item = checklist.other_docs.find(o => o.id === key);
+      } else { // This is an 'other' document, keyed by its name
+         const item = checklist.other_docs.find(o => o.name === key); // Match by name
          if (item && item.rejected) {
            isRejected = true;
          }
@@ -610,13 +605,13 @@ export default function ChecklistView() {
                 </tr>
               </thead>
               <tbody>
-                {checklist.otherDocuments.map((doc, idx) => {
-                  const key = `other-${idx}`;
+                {checklist.otherDocuments.map((docName) => { // Changed doc to docName for clarity
+                  const key = docName; // Key is now the document name itself
                   const upload = checklist.uploads?.[key];
                   
                   return (
-                    <tr key={idx}>
-                      <td data-label="Document"><strong>{doc}</strong></td>
+                    <tr key={docName}> {/* Use docName as key for row */}
+                      <td data-label="Document"><strong>{docName}</strong></td>
                       <td data-label="Status">{getUploadStatus(key)}</td>
                       <td data-label="Preview">
                         {upload && (
@@ -956,8 +951,9 @@ export default function ChecklistView() {
                     <tbody>
                       {checklist.subjects.map((subject) => (
                         <tr key={subject.id}>
-                          <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left', fontWeight: 'bold' }}>
-                            {subject.code}
+                          <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>
+                            <div style={{ fontWeight: 'bold' }}>{subject.code}</div>
+                            <div style={{ fontSize: '8pt', color: '#666', fontWeight: 'normal' }}>{subject.name}</div>
                           </td>
                           {/* 
                              Mapping Based on DEFAULT_DOCUMENTS index:
@@ -998,17 +994,16 @@ export default function ChecklistView() {
                        </tr>
                      </thead>
                      <tbody>
-                       {DEFAULT_DOCUMENTS.other.map((doc, idx) => {
-                          const key = `other-${idx}`;
-                          const upload = checklist.uploads[key];
-                          const hasUpload = upload && upload.length > 0;
-                          return (
-                            <tr key={idx}>
-                              <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>{doc}</td>
-                              <td style={{ border: '1px solid black', padding: '5px' }}>{hasUpload ? <span style={{ fontWeight: 'bold' }}>OK</span> : ''}</td>
-                            </tr>
-                          );
-                       })}
+                        {DEFAULT_DOCUMENTS.other.map((doc, idx) => {
+                           const upload = checklist.uploads[doc];
+                           const hasUpload = upload && upload.length > 0;
+                           return (
+                             <tr key={idx}>
+                               <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>{doc}</td>
+                               <td style={{ border: '1px solid black', padding: '5px' }}>{hasUpload ? <span style={{ fontWeight: 'bold' }}>OK</span> : ''}</td>
+                             </tr>
+                           );
+                        })}
                      </tbody>
                   </table>
                 </div>

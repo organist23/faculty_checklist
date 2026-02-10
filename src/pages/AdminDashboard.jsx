@@ -1278,13 +1278,13 @@ export default function AdminDashboard() {
 
                               otherDocs.forEach(item => {
                                 if (item.docs && item.docs.length > 0) {
-                                  uploadsMap[item.id] = item.docs;
+                                  uploadsMap[item.name || item.id] = item.docs;
                                 }
                               });
 
                               const profile = {
                                 ...checklist,
-                                subjects: subjects,
+                                subjects: raw.subjects || [],
                                 otherDocuments: DEFAULT_DOCUMENTS.other,
                                 uploads: uploadsMap
                               };
@@ -1525,8 +1525,9 @@ export default function AdminDashboard() {
                       {/* We iterate 12 times for the columns as per DEFAULT_DOCUMENTS structure implied */}
                       {previewData.subjects.map((subject) => (
                         <tr key={subject.id}>
-                          <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left', fontWeight: 'bold' }}>
-                            {subject.code}
+                          <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>
+                            <div style={{ fontWeight: 'bold' }}>{subject.code}</div>
+                            <div style={{ fontSize: '8pt', color: '#666', fontWeight: 'normal' }}>{subject.name}</div>
                           </td>
                           {DEFAULT_DOCUMENTS.subjects.map((_, idx) => {
                             const key = `subject-${subject.id}-${idx}`;
@@ -1561,16 +1562,15 @@ export default function AdminDashboard() {
                      </thead>
                      <tbody>
                        {DEFAULT_DOCUMENTS.other.map((doc, idx) => {
-                          const key = `other-${idx}`;
-                          const upload = previewData.uploads[key];
-                          const hasUpload = upload && upload.length > 0;
-                          return (
-                            <tr key={idx}>
-                              <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>{doc}</td>
-                              <td style={{ border: '1px solid black', padding: '5px' }}>{hasUpload ? <span style={{ fontWeight: 'bold' }}>OK</span> : ''}</td>
-                            </tr>
-                          );
-                       })}
+                           const upload = previewData.uploads[doc];
+                           const hasUpload = upload && upload.length > 0;
+                           return (
+                             <tr key={idx}>
+                               <td style={{ border: '1px solid black', padding: '5px', textAlign: 'left' }}>{doc}</td>
+                               <td style={{ border: '1px solid black', padding: '5px' }}>{hasUpload ? <span style={{ fontWeight: 'bold' }}>OK</span> : ''}</td>
+                             </tr>
+                           );
+                        })}
                      </tbody>
                   </table>
                 </div>

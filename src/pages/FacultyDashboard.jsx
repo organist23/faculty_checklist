@@ -389,9 +389,10 @@ export default function FacultyDashboard() {
           }
        });
     });
-    checklist.other_docs.forEach((od, i) => {
-       const k = `other-${i}`; 
-       uploads[k] = od.docs || [];
+    checklist.other_docs.forEach((od) => {
+       if (od && od.name) {
+         uploads[od.name] = od.docs || [];
+       }
     });
   }
 
@@ -1261,9 +1262,9 @@ export default function FacultyDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(checklist.other_docs || []).map((item, idx) => {
+                {(checklist.other_docs || []).map((item) => {
                   if (!item) return null;
-                  const key = `other-${idx}`;
+                  const key = item.name;
                   const hasUpload = uploads[key];
                   
                   const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
