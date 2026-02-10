@@ -548,12 +548,22 @@ export default function FacultyDashboard() {
     const termName = selectedTerm === 'LIVE' 
         ? `${settings.academicYear}-${settings.semester}` 
         : selectedTerm;
+
+    // Calculate total files for progress and validation
+    const totalFiles = (checklist.subjects || []).reduce((acc, s) => acc + (s.docs || []).length, 0) +
+                       (checklist.other_docs || []).reduce((acc, o) => acc + (o.docs || []).length, 0);
+
+    if (totalFiles === 0) {
+      addToast('No documents found for the selected semester.', 'info');
+      return;
+    }
+
     const readableTerm = termName.split('-').length >= 3 
         ? `AY ${termName.split('-').slice(0, 2).join('-')} - ${termName.split('-').slice(2).join(' ')}`
         : termName;
 
     const isConfirmed = await confirm(
-      `Download ZIP archive for ${readableTerm}?`,
+      `Download ZIP archive for ${readableTerm}? (${totalFiles} documents)`,
       'Confirm Download'
     );
 
@@ -562,10 +572,6 @@ export default function FacultyDashboard() {
     try {
       setIsExporting(true);
       const zip = new JSZip();
-      
-      // Calculate total files for progress
-      const totalFiles = (checklist.subjects || []).reduce((acc, s) => acc + (s.docs || []).length, 0) +
-                         (checklist.other_docs || []).reduce((acc, o) => acc + (o.docs || []).length, 0);
       
       setExportProgress({ current: 0, total: totalFiles });
       let processed = 0;
