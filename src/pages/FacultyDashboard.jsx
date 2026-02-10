@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import DeadlineBanner from '../components/DeadlineBanner';
@@ -104,6 +104,16 @@ export default function FacultyDashboard() {
   const [showSubjectManager, setShowSubjectManager] = useState(false);
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
   const [subjectError, setSubjectError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [internalSearch, setInternalSearch] = useState('');
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(internalSearch);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [internalSearch]);
   
   // Media Capture Modal State
   const [mediaCapture, setMediaCapture] = useState({
@@ -379,29 +389,32 @@ export default function FacultyDashboard() {
     };
   };
 
-  const progress = calculateProgress();
+  const progress = useMemo(() => calculateProgress(), [checklist]);
 
   // Derive uploads map for UI
-  const uploads = {};
-  if (!checklist.loading) {
-    checklist.subjects.forEach(sub => {
-       sub.docs.forEach(doc => {
-          if (doc.type) {
-             const docIdx = DEFAULT_DOCUMENTS.subjects.indexOf(doc.type);
-             if (docIdx > -1) {
-                const k = `subject-${sub.id}-${docIdx}`;
-                if (!uploads[k]) uploads[k] = [];
-                uploads[k].push(doc);
-             }
-          }
-       });
-    });
-    checklist.other_docs.forEach((od) => {
-       if (od && od.name) {
-         uploads[od.name] = od.docs || [];
-       }
-    });
-  }
+  const uploads = useMemo(() => {
+    const map = {};
+    if (!checklist.loading) {
+      checklist.subjects.forEach(sub => {
+         sub.docs.forEach(doc => {
+            if (doc.type) {
+               const docIdx = DEFAULT_DOCUMENTS.subjects.indexOf(doc.type);
+               if (docIdx > -1) {
+                  const k = `subject-${sub.id}-${docIdx}`;
+                  if (!map[k]) map[k] = [];
+                  map[k].push(doc);
+               }
+            }
+         });
+      });
+      checklist.other_docs.forEach((od) => {
+         if (od && od.name) {
+           map[od.name] = od.docs || [];
+         }
+      });
+    }
+    return map;
+  }, [checklist]);
 
   const handleAddSubject = async () => {
     if (!subjectForm.name.trim() || !subjectForm.code.trim()) {
@@ -943,7 +956,86 @@ export default function FacultyDashboard() {
     }, null);
   };
 
-  const latestUploadAt = calculateLatestUpload();
+  const latestUploadAt = useMemo(() => calculateLatestUpload(), [checklist]);
+
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(internalSearch);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [internalSearch]);
+
+  // Search Logic (Memoized)
+  const { visibleSubjects, visibleSubjectColumns, visibleOtherDocs, isSearchActive, hasResults } = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    
+    if (!q) {
+      return { 
+        visibleSubjects: checklist.subjects || [], 
+        visibleSubjectColumns: DEFAULT_DOCUMENTS.subjects, 
+        visibleOtherDocs: checklist.other_docs || [], 
+        isSearchActive: false, 
+        hasResults: true 
+      };
+    }
+
+    // Tokenize query for flexible matching (e.g. "software eng" matches "Software Engineering")
+    const tokens = q.split(/\s+/).filter(t => t.length > 0);
+    
+    const matchText = (text) => {
+      if (!text) return false;
+      const normalized = text.toString().toLowerCase();
+      // "Transparent" matching: ensure every token appears somewhere in the text
+      return tokens.every(token => normalized.includes(token));
+    };
+
+    // Section 1 Logic
+    const matchedSubjectDocs = DEFAULT_DOCUMENTS.subjects.filter(d => matchText(d));
+    
+    // Robust Subject Matching
+    const matchedSubjects = (checklist.subjects || []).filter(s => {
+       return matchText(s.name) || matchText(s.code);
+    });
+
+    let vSubjects = checklist.subjects || [];
+    let vColumns = DEFAULT_DOCUMENTS.subjects;
+
+    const hasDocMatch = matchedSubjectDocs.length > 0;
+    const hasSubMatch = matchedSubjects.length > 0;
+
+    if (hasDocMatch && !hasSubMatch) {
+      // User searched specific doc type -> Show that col for ALL subjects
+      vColumns = matchedSubjectDocs;
+    } else if (hasSubMatch && !hasDocMatch) {
+        // User searched specific subject -> Show that row with ALL cols
+        vSubjects = matchedSubjects;
+    } else if (hasSubMatch && hasDocMatch) {
+        // Ambiguous or specific intersection -> Show matched rows and matched cols
+        vSubjects = matchedSubjects;
+        vColumns = matchedSubjectDocs;
+    } else {
+        // No matches found in Section 1 context
+        vSubjects = [];
+    }
+
+    // Section 2 Logic
+    const vOtherDocs = (checklist.other_docs || []).filter(item => 
+      !q || matchText(item.name)
+    );
+
+    const active = !!q;
+    const results = vSubjects.length > 0 || vOtherDocs.length > 0;
+
+    return { 
+      visibleSubjects: vSubjects, 
+      visibleSubjectColumns: vColumns, 
+      visibleOtherDocs: vOtherDocs, 
+      isSearchActive: active, 
+      hasResults: results 
+    };
+  }, [checklist, searchQuery]);
 
   return (
     <div>
@@ -1069,6 +1161,8 @@ export default function FacultyDashboard() {
           </div>
         </div>
 
+
+
         {/* Statistics Dashboard */}
         <div className="dashboard-stats">
           <div className="stat-card green" style={{ color: 'var(--brand-blue)', background: 'var(--brand-blue-pale)' }}>
@@ -1153,10 +1247,43 @@ export default function FacultyDashboard() {
           </div>
         </div>
 
+        {/* Search Bar */}
+        <div style={{ marginBottom: 'var(--space-6)', position: 'relative' }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            background: 'rgba(255, 255, 255, 0.95)', 
+            backdropFilter: 'blur(4px)',
+            borderRadius: 'var(--radius-md)', 
+            padding: '0 var(--space-4)', 
+            border: '1px solid var(--gray-300)', 
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)' 
+          }}>
+            <span style={{ fontSize: '1.2rem', marginRight: 'var(--space-2)' }}>🔍</span>
+            <input 
+              type="text" 
+              placeholder="Search for documents or subjects..." 
+              value={internalSearch}
+              onChange={(e) => setInternalSearch(e.target.value)}
+              style={{ flex: 1, border: 'none', padding: 'var(--space-3) 0', fontSize: '1rem', outline: 'none', background: 'transparent' }}
+            />
+            {internalSearch && (
+              <button 
+                onClick={() => setInternalSearch('')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--gray-500)', padding: 'var(--space-2)' }}
+                title="Clear Search"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Section 1: Documents by Subject */}
+        {visibleSubjects.length > 0 && (
         <div className="card mb-6">
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 className="card-title">Section 1: Documents by Subject</h2>
+            <h2 className="card-title">Section 1: Documents by Subject {isSearchActive && <span className="text-gray" style={{ fontSize: '0.8em', marginLeft: '10px' }}>(Filtered)</span>}</h2>
             {/* Show Manage Subjects for LIVE, Current, or Future terms */}
             {(selectedTerm === 'LIVE' || !isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) && (
               <button 
@@ -1174,19 +1301,19 @@ export default function FacultyDashboard() {
               <thead>
                 <tr>
                   <th>Subjects Taught</th>
-                  {DEFAULT_DOCUMENTS.subjects.map((doc, idx) => (
+                  {visibleSubjectColumns.map((doc, idx) => (
                     <th key={idx}>{doc}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {checklist.subjects.map((subject) => (
+                {visibleSubjects.map((subject) => (
                   <tr key={subject.id}>
                     <td data-label="Subject">
                       <strong>{subject.name}</strong>
                     </td>
-                    {DEFAULT_DOCUMENTS.subjects.map((doc, docIdx) => {
-                      const key = `subject-${subject.id}-${docIdx}`;
+                    {visibleSubjectColumns.map((doc, docIdx) => {
+                      const key = `subject-${subject.id}-${DEFAULT_DOCUMENTS.subjects.indexOf(doc)}`;
                       const hasUpload = uploads[key];
                       const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
                       
@@ -1254,11 +1381,13 @@ export default function FacultyDashboard() {
             </table>
           </div>
         </div>
+        )}
 
         {/* Section 2: Other Documents */}
+        {visibleOtherDocs.length > 0 && (
         <div className="card mb-6">
           <div className="card-header">
-            <h2 className="card-title">Section 2: Other Documents</h2>
+            <h2 className="card-title">Section 2: Other Documents {isSearchActive && <span className="text-gray" style={{ fontSize: '0.8em', marginLeft: '10px' }}>(Filtered)</span>}</h2>
           </div>
           <div className="table-responsive">
             <table className="table">
@@ -1269,7 +1398,7 @@ export default function FacultyDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {(checklist.other_docs || []).map((item) => {
+                {visibleOtherDocs.map((item) => {
                   if (!item) return null;
                   const key = item.name;
                   const hasUpload = uploads[key];
@@ -1339,6 +1468,20 @@ export default function FacultyDashboard() {
             </table>
           </div>
         </div>
+        )}
+
+        {!hasResults && isSearchActive && (
+          <div className="card shadow-nvsu animate-fade-in" style={{ textAlign: 'center', padding: 'var(--space-12)', marginTop: 'var(--space-8)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🔍</div>
+            <h2 style={{ color: 'var(--gray-600)', marginBottom: 'var(--space-2)' }}>No Results Found</h2>
+            <p className="text-gray mb-6">
+              We couldn't find any documents or subjects matching "{searchQuery}".
+            </p>
+            <button className="btn btn-primary btn-lg" onClick={() => setInternalSearch('')}>
+              Show All Documents
+            </button>
+          </div>
+        )}
 
         {/* Progress & Submission */}
         <div className="completion-progress">
