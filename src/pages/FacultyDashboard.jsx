@@ -1272,7 +1272,7 @@ export default function FacultyDashboard() {
                   const isRejected = item.rejected;
                   
                   return (
-                    <tr key={idx}>
+                    <tr key={item.name}>
                       <td data-label="Document" style={isRejected ? { backgroundColor: '#fee2e2', borderLeft: '4px solid #ef4444' } : {}}>
                         <strong>{item.name || 'Unknown Document'}</strong>
                         {isRejected && <div style={{ fontSize: '10px', color: '#b91c1c', fontWeight: 'bold', marginTop: '4px' }}>⚠️ ACTION REQUIRED: RE-UPLOAD</div>}
