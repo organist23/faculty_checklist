@@ -406,10 +406,11 @@ export default function FacultyDashboard() {
       return;
     }
     
-    // Check for duplicate names (optional but good)
+    // Check for duplicate code + name combination to prevent exact duplicates
     const normalizedName = subjectForm.name.trim().toLowerCase();
-    if (checklist.subjects.some(s => s.name.toLowerCase() === normalizedName)) {
-      setSubjectError('A subject with this name already exists.');
+    const normalizedCode = subjectForm.code.trim().toLowerCase();
+    if (checklist.subjects.some(s => s.name.toLowerCase() === normalizedName && s.code.toLowerCase() === normalizedCode)) {
+      setSubjectError('This exact subject already exists.');
       return;
     }
 
@@ -1153,98 +1154,6 @@ export default function FacultyDashboard() {
             )}
           </div>
           
-          {/* Subject Manager Modal */}
-          {showSubjectManager && (
-            <div className="modal-backdrop" style={{ zIndex: 1100 }}>
-              <div className="modal" style={{ maxWidth: '700px', width: '90%' }}>
-                <div className="modal-header">
-                  <h3 className="modal-title">Manage Subjects</h3>
-                  <button onClick={() => setShowSubjectManager(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
-                </div>
-                <div className="modal-body">
-                  {/* Add New Subject Form */}
-                  <div style={{ background: 'var(--gray-50)', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid var(--gray-200)' }}>
-                      <h4 style={{ fontSize: '12px', marginBottom: '10px', textTransform: 'uppercase', color: 'var(--gray-600)', fontWeight: 'bold' }}>Add New Subject</h4>
-                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                        <input 
-                          type="text" 
-                          className="form-input" 
-                          placeholder="Subject Code (e.g. IT 101)" 
-                          value={subjectForm.code}
-                          onChange={e => setSubjectForm(prev => ({ ...prev, code: e.target.value }))}
-                          style={{ flex: 1, minWidth: '120px' }}
-                        />
-                        <input 
-                          type="text" 
-                          className="form-input" 
-                          placeholder="Descriptive Title" 
-                          value={subjectForm.name}
-                          onChange={e => setSubjectForm(prev => ({ ...prev, name: e.target.value }))}
-                          style={{ flex: 2, minWidth: '200px' }}
-                        />
-                        <button className="btn btn-primary" onClick={handleAddSubject}>Add Subject</button>
-                      </div>
-                      {subjectError && <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>⚠️ {subjectError}</p>}
-                  </div>
-
-                  {/* List of Existing Subjects */}
-                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                      <table className="table" style={{ fontSize: '14px' }}>
-                        <thead>
-                          <tr>
-                            <th style={{ width: '120px' }}>Code</th>
-                            <th>Title</th>
-                            <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {checklist.subjects.map(sub => (
-                            <tr key={sub.id}>
-                              <td style={{ padding: '8px' }}>
-                                  <input 
-                                    defaultValue={sub.code} 
-                                    onBlur={(e) => {
-                                      if (e.target.value !== sub.code) handleUpdateSubject(sub.id, sub.name, e.target.value);
-                                    }}
-                                    className="form-input"
-                                    style={{ padding: '4px 8px', width: '100%' }}
-                                  />
-                              </td>
-                              <td style={{ padding: '8px' }}>
-                                  <input 
-                                    defaultValue={sub.name} 
-                                    onBlur={(e) => {
-                                      if (e.target.value !== sub.name) handleUpdateSubject(sub.id, e.target.value, sub.code);
-                                    }}
-                                    className="form-input"
-                                    style={{ padding: '4px 8px', width: '100%' }}
-                                  />
-                              </td>
-                              <td style={{ textAlign: 'center', padding: '8px' }}>
-                                  <button 
-                                    className="btn btn-sm"
-                                    style={{ color: 'white', background: '#ef4444', border: 'none', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} 
-                                    onClick={() => handleDeleteSubject(sub.id)}
-                                    title="Delete Subject"
-                                  >
-                                    ✕
-                                  </button>
-                              </td>
-                            </tr>
-                          ))}
-                          {checklist.subjects.length === 0 && (
-                              <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '20px' }}>No subjects added yet. Add one above!</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                  </div>
-                </div>
-                <div className="modal-footer">
-                  <button className="btn btn-secondary" onClick={() => setShowSubjectManager(false)}>Done</button>
-                </div>
-              </div>
-            </div>
-          )}
           <div className="table-responsive">
             <table className="table">
               <thead>
@@ -1654,6 +1563,98 @@ export default function FacultyDashboard() {
                <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Image {previewState.currentIndex + 1} of {previewState.files.length}</div>
              </div>
 
+          </div>
+        </div>
+      )}
+      {/* Subject Manager Modal */}
+      {showSubjectManager && (
+        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
+          <div className="modal" style={{ maxWidth: '700px', width: '90%' }}>
+            <div className="modal-header">
+              <h3 className="modal-title">Manage Subjects</h3>
+              <button onClick={() => setShowSubjectManager(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
+            </div>
+            <div className="modal-body">
+              {/* Add New Subject Form */}
+              <div style={{ background: 'var(--gray-50)', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid var(--gray-200)' }}>
+                  <h4 style={{ fontSize: '12px', marginBottom: '10px', textTransform: 'uppercase', color: 'var(--gray-600)', fontWeight: 'bold' }}>Add New Subject</h4>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Subject Code (e.g. IT 101)" 
+                      value={subjectForm.code}
+                      onChange={e => setSubjectForm(prev => ({ ...prev, code: e.target.value }))}
+                      style={{ flex: 1, minWidth: '120px', backgroundColor: '#ffffff' }}
+                    />
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      placeholder="Descriptive Title" 
+                      value={subjectForm.name}
+                      onChange={e => setSubjectForm(prev => ({ ...prev, name: e.target.value }))}
+                      style={{ flex: 2, minWidth: '200px', backgroundColor: '#ffffff' }}
+                    />
+                    <button className="btn btn-primary" onClick={handleAddSubject}>Add Subject</button>
+                  </div>
+                  {subjectError && <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>⚠️ {subjectError}</p>}
+              </div>
+
+              {/* List of Existing Subjects */}
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                  <table className="table" style={{ fontSize: '14px' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ width: '120px' }}>Code</th>
+                        <th>Title</th>
+                        <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {checklist.subjects.map(sub => (
+                        <tr key={sub.id}>
+                          <td style={{ padding: '8px' }}>
+                              <input 
+                                defaultValue={sub.code} 
+                                onBlur={(e) => {
+                                  if (e.target.value !== sub.code) handleUpdateSubject(sub.id, sub.name, e.target.value);
+                                }}
+                                className="form-input"
+                                style={{ padding: '4px 8px', width: '100%', backgroundColor: '#ffffff' }}
+                              />
+                          </td>
+                          <td style={{ padding: '8px' }}>
+                              <input 
+                                defaultValue={sub.name} 
+                                onBlur={(e) => {
+                                  if (e.target.value !== sub.name) handleUpdateSubject(sub.id, e.target.value, sub.code);
+                                }}
+                                className="form-input"
+                                style={{ padding: '4px 8px', width: '100%', backgroundColor: '#ffffff' }}
+                              />
+                          </td>
+                          <td style={{ textAlign: 'center', padding: '8px' }}>
+                              <button 
+                                className="btn btn-sm"
+                                style={{ color: 'white', background: '#ef4444', border: 'none', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} 
+                                onClick={() => handleDeleteSubject(sub.id)}
+                                title="Delete Subject"
+                              >
+                                ✕
+                              </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {checklist.subjects.length === 0 && (
+                          <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '20px' }}>No subjects added yet. Add one above!</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setShowSubjectManager(false)}>Done</button>
+            </div>
           </div>
         </div>
       )}
