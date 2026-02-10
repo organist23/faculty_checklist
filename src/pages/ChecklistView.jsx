@@ -138,33 +138,56 @@ export default function ChecklistView() {
 
       // Hydrate previews for documents
       // Batched Hydration for Admin View
+      // Batched Hydration for Admin View
       const hydrateAllDocs = async () => {
          const subjects = data.subjects || [];
          const other = data.other_docs || [];
          
+         // Robustly collect paths, filtering out empty/null ones
          const allPaths = [];
-         subjects.forEach(s => s.docs?.forEach(d => allPaths.push(d.path)));
-         other.forEach(o => o.docs?.forEach(d => allPaths.push(d.path)));
+         subjects.forEach(s => s.docs?.forEach(d => { if (d.path) allPaths.push(d.path); }));
+         other.forEach(o => o.docs?.forEach(d => { if (d.path) allPaths.push(d.path); }));
 
          if (allPaths.length === 0) return { subjects, other };
 
-         const { data: signedData, error: signError } = await supabase.storage
-            .from('checklists')
-            .createSignedUrls(allPaths, 3600);
+         let urlMap = {};
 
-         if (signError) {
-             console.error('Error signing URLs:', signError);
-             return { subjects, other };
+         try {
+           const { data: signedData, error: signError } = await supabase.storage
+              .from('checklists')
+              .createSignedUrls(allPaths, 3600);
+
+           if (signError) {
+               console.error('Error signing URLs (Check permission policies):', signError);
+               // Proceed to try public URL fallback
+           } else {
+               signedData?.forEach(item => {
+                   if (item.path && item.signedUrl) urlMap[item.path] = item.signedUrl;
+                   else if (item.path && item.error) console.warn(`Failed to sign ${item.path}:`, item.error);
+               });
+           }
+         } catch (err) {
+            console.error('Exception during signing:', err);
          }
 
-         const urlMap = {};
-         signedData?.forEach(item => {
-             if (item.path && item.signedUrl) urlMap[item.path] = item.signedUrl;
-         });
-
+         // Fallback: If signed URL is missing, try getPublicUrl (works if bucket is public)
+         // or keep the path (might allow download later)
          const mapDocs = (list) => list.map(item => ({
              ...item,
-             docs: (item.docs || []).map(d => ({ ...d, preview: urlMap[d.path] }))
+             docs: (item.docs || []).map(d => {
+                const signed = urlMap[d.path];
+                let previewUrl = signed;
+                
+                if (!previewUrl && d.path) {
+                   // Fallback to public URL if no signed URL found
+                   const { data: publicData } = supabase.storage
+                      .from('checklists')
+                      .getPublicUrl(d.path);
+                   previewUrl = publicData.publicUrl;
+                }
+                
+                return { ...d, preview: previewUrl };
+             })
          }));
 
          return { subjects: mapDocs(subjects), other: mapDocs(other) };
