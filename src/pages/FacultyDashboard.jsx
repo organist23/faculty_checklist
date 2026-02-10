@@ -632,15 +632,16 @@ export default function FacultyDashboard() {
       let type, itemId, docName;
 
       // Parse Key
-      if (key.startsWith('other-')) {
-         type = 'other';
-         itemId = key; 
-      } else if (key.startsWith('subject-')) {
+      if (key.startsWith('subject-')) {
          type = 'subject';
          const parts = key.split('-');
          const docIdx = parseInt(parts[parts.length - 1]);
          itemId = parts.slice(1, parts.length - 1).join('-');
          docName = DEFAULT_DOCUMENTS.subjects[docIdx];
+      } else {
+         type = 'other';
+         itemId = key; // itemId is now the document name (e.g. "Faculty Workload")
+         docName = key;
       }
 
       const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
@@ -697,7 +698,7 @@ export default function FacultyDashboard() {
         });
         
         const updatedOther = prev.other_docs.map(o => {
-          if (o.id === itemId && type === 'other') {
+          if (o.name === itemId && type === 'other') {
              return { 
                  ...o, 
                  docs: [...o.docs, ...newDocs],
@@ -780,14 +781,7 @@ export default function FacultyDashboard() {
       // 1. IDENTIFY THE FILE AND METADATA (Read-only check first)
       const currentSnapshot = checklist; 
       
-      if (key.startsWith('other-')) {
-         type = 'other';
-         itemId = key;
-         const item = currentSnapshot.other_docs.find(o => o.id === itemId);
-         if (item && item.docs[fileIndex]) {
-             docToRemove = item.docs[fileIndex];
-         }
-      } else if (key.startsWith('subject-')) {
+      if (key.startsWith('subject-')) {
          type = 'subject';
          const parts = key.split('-');
          const docIdx = parseInt(parts[parts.length - 1]);
@@ -798,6 +792,13 @@ export default function FacultyDashboard() {
          if (subject) {
              const docsOfType = subject.docs.filter(d => d.type === docName);
              docToRemove = docsOfType[fileIndex]; 
+         }
+      } else {
+         type = 'other';
+         itemId = key; // name
+         const item = currentSnapshot.other_docs.find(o => o.name === itemId);
+         if (item && item.docs[fileIndex]) {
+             docToRemove = item.docs[fileIndex];
          }
       }
 
@@ -838,7 +839,7 @@ export default function FacultyDashboard() {
            });
         } else {
            updatedOther = prev.other_docs.map(o => {
-             if (o.id === itemId) {
+             if (o.name === itemId) {
                 return { ...o, docs: o.docs.filter(d => d.path !== docToRemove.path) };
              }
              return o;
