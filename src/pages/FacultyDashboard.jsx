@@ -429,7 +429,6 @@ export default function FacultyDashboard() {
     const newSubjects = [...checklist.subjects, newSubject];
     setChecklist(prev => ({ ...prev, subjects: newSubjects }));
     setSubjectForm({ name: '', code: '' });
-    setShowSubjectManager(false);
     addToast('Subject added successfully!', 'success');
 
     try {
