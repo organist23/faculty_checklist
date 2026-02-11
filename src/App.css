@@ -16,6 +16,12 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+@media (max-width: 768px) {
+  .app-header {
+    padding: 12px 16px;
+  }
+}
+
 .header-content {
   display: flex;
   align-items: center;
@@ -247,135 +253,312 @@
 }
 
 .login-title {
+  font-family: var(--font-heading);
   font-size: var(--text-3xl);
-  color: var(--nvsu-green-dark);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: var(--brand-blue);
   margin-bottom: var(--space-2);
 }
 
 .login-subtitle {
-  color: var(--gray-600);
-  font-size: var(--text-base);
+  font-family: var(--font-sans);
+  font-weight: 700;
+  color: var(--brand-green);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+}
+
+.login-subtitle span {
+  display: block;
+  font-weight: 500;
+  color: var(--gray-500);
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Hide browser's native password reveal button to prevent duplicate icons */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
+input::-webkit-contacts-auto-fill-button,
+input::-webkit-credentials-auto-fill-button {
+  visibility: hidden;
+  display: none !important;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  color: var(--gray-500);
+  transition: color 0.2s, opacity 0.2s;
+  opacity: 0.7;
+}
+
+.password-toggle-btn:hover {
+  color: var(--nvsu-green);
+  opacity: 1;
 }
 
 /* === Deadline Banner === */
+/* === Professional Deadline Banner (Integrated UI-UX Pro Max) === */
 .deadline-banner {
-  background: white;
-  border-radius: var(--radius-md);
-  padding: var(--space-3) var(--space-4);
-  margin-bottom: var(--space-4);
-  box-shadow: var(--shadow-sm);
-  border-left: 4px solid;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 20px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-left: 6px solid #cbd5e1;
   position: relative;
   overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.deadline-banner:hover {
+  transform: translateY(-4px) scale(1.01);
+  box-shadow: 0 20px 50px -15px rgba(0, 0, 0, 0.15);
+}
+
+.deadline-banner::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.4) 0%, transparent 60%);
+  pointer-events: none;
+  opacity: 0.5;
 }
 
 .deadline-header-row {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--space-1);
+  align-items: flex-start;
+  gap: 16px;
 }
 
 .deadline-title-group {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: 4px;
 }
 
 .deadline-mini-label {
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
   color: var(--gray-500);
-  background: var(--gray-100);
-  padding: 2px 6px;
-  border-radius: 4px;
 }
 
 .deadline-date-small {
-  font-size: var(--text-sm);
-  font-weight: 700;
-  color: var(--nvsu-green-dark);
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--brand-blue-dark);
+  letter-spacing: -0.01em;
 }
 
 .deadline-status-pill {
   font-size: 11px;
-  font-weight: 800;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  display: flex;
+  font-weight: 900;
+  padding: 6px 14px;
+  border-radius: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  border: 1px solid rgba(255,255,255,0.3);
 }
 
-.deadline-status-pill.status-green { background: var(--nvsu-green-pale); color: var(--nvsu-green-dark); }
-.deadline-status-pill.status-yellow { background: var(--nvsu-yellow-pale); color: #92400e; }
-.deadline-status-pill.status-red { background: var(--nvsu-red-pale); color: var(--nvsu-red); }
+.status-pill-icon {
+  font-size: 1.2rem;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+}
+
+.status-pill-text {
+  text-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
 
 .deadline-timer-row {
-  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.countdown-timer-wrapper {
+  background: rgba(255,255,255,0.4);
+  padding: 4px 12px;
+  border-radius: 8px;
+  display: inline-block;
 }
 
 .countdown-timer {
-  font-size: var(--text-base);
+  font-size: 1.05rem;
   font-weight: 700;
-  color: var(--gray-700);
+  color: var(--gray-800);
 }
 
 .deadline-progress-mini {
-  margin-top: var(--space-2);
+  width: 100%;
+  height: 8px;
+  background: rgba(0,0,0,0.05);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.deadline-progress-mini .progress-bar {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 1s cubic-bezier(0.1, 0.7, 1.0, 0.1);
+  box-shadow: 0 0 10px rgba(255,255,255,0.5) inset;
+}
+
+/* Status Variations with Vibrant Glows */
+.deadline-banner.status-green {
+  border-left-color: var(--brand-green);
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+  box-shadow: 0 10px 30px -10px rgba(34, 197, 94, 0.2);
+}
+.deadline-banner.status-green .deadline-progress-mini .progress-bar {
+  background: linear-gradient(to right, var(--brand-green), #4ade80);
+}
+
+.deadline-banner.status-yellow {
+  border-left-color: var(--brand-gold-dark);
+  background: linear-gradient(135deg, #ffffff 0%, #fefce8 100%);
+  box-shadow: 0 10px 30px -10px rgba(234, 179, 8, 0.2);
+}
+.deadline-banner.status-yellow .deadline-progress-mini .progress-bar {
+  background: linear-gradient(to right, var(--brand-gold-dark), var(--brand-gold));
+}
+
+.deadline-banner.status-red {
+  border-left-color: var(--nvsu-red);
+  background: linear-gradient(135deg, #ffffff 0%, #fef2f2 100%);
+  box-shadow: 0 15px 35px -10px rgba(239, 68, 68, 0.25);
+  animation: banner-pulse-red 2.5s infinite;
+}
+.deadline-banner.status-red .deadline-progress-mini .progress-bar {
+  background: linear-gradient(to right, var(--nvsu-red), #f87171);
+}
+
+.deadline-banner.status-late {
+  border-left-color: var(--brand-blue);
+  background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%);
+  box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.2);
+}
+
+@keyframes banner-pulse-red {
+  0% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); transform: scale(1); }
+  50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.4); transform: scale(1.005); }
+  100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.2); transform: scale(1); }
+}
+.deadline-banner.status-late .deadline-progress-mini .progress-bar {
+  background: linear-gradient(to right, var(--brand-blue), var(--brand-blue-light));
+}
+
+@keyframes banner-attention {
+  0%, 100% { box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.05); }
+  50% { box-shadow: 0 8px 32px -4px rgba(239, 68, 68, 0.15); }
 }
 
 @media (max-width: 600px) {
   .deadline-banner {
-    padding: var(--space-2) var(--space-3);
+    padding: 10px 14px;
+    gap: 4px;
+    border-radius: 12px;
+    margin-bottom: 16px;
   }
-  
   .deadline-header-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-1);
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
   }
-
+  .deadline-title-group {
+    text-align: right;
+    width: auto;
+  }
+  .deadline-mini-label {
+    font-size: 7px;
+    letter-spacing: 0.5px;
+    margin-bottom: -2px;
+  }
   .deadline-date-small {
-    font-size: 11px;
+    font-size: 0.8rem;
   }
-
+  .deadline-status-pill {
+    padding: 3px 8px;
+    font-size: 8px;
+    gap: 4px;
+  }
+  .status-pill-icon {
+    font-size: 0.9rem;
+  }
+  .deadline-timer-row {
+    margin-top: 2px;
+  }
+  .countdown-timer-wrapper {
+    padding: 2px 8px;
+    border-radius: 6px;
+  }
   .countdown-timer {
-    font-size: var(--text-sm);
+    font-size: 0.75rem;
   }
-}
+  .deadline-progress-mini {
+    height: 4px;
+    margin-top: 2px;
+  }
 
-.deadline-banner.status-green {
-  border-color: var(--status-on-time);
-}
-
-.deadline-banner.status-yellow {
-  border-color: var(--status-approaching);
-}
-
-.deadline-banner.status-red {
-  border-color: var(--status-overdue);
-  animation: pulse-border 2s infinite;
-}
-
-@keyframes pulse-border {
-  0% { box-shadow: var(--shadow-sm); }
-  50% { box-shadow: 0 0 10px rgba(196, 30, 58, 0.2); }
-  100% { box-shadow: var(--shadow-sm); }
-}
-
-.deadline-banner.status-late {
-  border-color: var(--status-late);
-}
-
-.deadline-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-full);
-  font-weight: 800;
-  font-size: var(--text-sm);
+  /* Compact Stats Grid for Mobile */
+  .dashboard-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    margin-bottom: 20px !important;
+  }
+  .stat-card {
+    padding: 12px 14px !important;
+    border-radius: 16px !important;
+  }
+  .stat-label {
+    font-size: 0.65rem !important;
+    margin-bottom: 6px !important;
+  }
+  .stat-value {
+    font-size: 1.4rem !important;
+  }
+  .stat-description {
+    font-size: 0.6rem !important;
+    margin-top: 4px !important;
+  }
 }
 
 /* === Dashboard Stats === */
@@ -883,3 +1066,10 @@ input:checked + .toggle-slider:before {
   padding-left: 2.75rem !important;
 }
 
+@media (max-width: 768px) {
+  .container {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    padding-top: 12px !important;
+  }
+}

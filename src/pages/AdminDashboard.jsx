@@ -175,6 +175,7 @@ export default function AdminDashboard() {
   const [filteredChecklists, setFilteredChecklists] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState('all');
+  const [error, setError] = useState(null);
   
   useEffect(() => {
     fetchChecklists();
@@ -197,6 +198,7 @@ export default function AdminDashboard() {
 
   const fetchChecklists = async (isBackground = false) => {
     try {
+      setError(null);
       if (!isBackground) setLoading(true);
 
       const currentAy = settings.academicYear;
@@ -284,14 +286,11 @@ export default function AdminDashboard() {
       setLoading(false);
     } catch (err) {
       console.error('Dashboard Load Error:', err);
-      
-      // Handle "Ghost Admin" or unauthorized access
       if (err.code === '23503' || err.code === '42501') {
-         console.warn('Unauthorized or Invalid Profile Access. Forcing logout.');
          logout();
       }
-      
       setLoading(false);
+      setError(err.message);
     }
   };
 
@@ -609,7 +608,7 @@ export default function AdminDashboard() {
       fetchGlobalStorageData(); // Refresh storage usage stats
     } catch (err) {
       console.error('Purge Error:', err);
-      addToast('Failed to purge storage.', 'error');
+      addToast('Please check your internet connection or try again later.', 'error');
     } finally {
       setLoading(false);
     }
@@ -913,23 +912,27 @@ export default function AdminDashboard() {
               {showSettingsMenu && (
                 <div className="dropdown-menu">
                   <button 
-                    className="dropdown-item"
-                    style={{ color: 'var(--brand-green)' }}
-                    onClick={() => setShowStorageModal(true)}
+                    className={`dropdown-item ${error ? 'disabled' : ''}`}
+                    style={{ color: 'var(--brand-green)', opacity: error ? 0.5 : 1 }}
+                    disabled={!!error}
+                    onClick={() => !error && setShowStorageModal(true)}
                   >
                     <span>💾 Storage & Archive Manager</span>
                   </button>
                   <button 
-                    className="dropdown-item"
-                    style={{ color: 'var(--brand-red)', borderTop: '1px solid #eee' }}
-                    onClick={handleFactoryReset}
+                    className={`dropdown-item ${error ? 'disabled' : ''}`}
+                    style={{ color: 'var(--brand-red)', borderTop: '1px solid #eee', opacity: error ? 0.5 : 1 }}
+                    disabled={!!error}
+                    onClick={() => !error && handleFactoryReset()}
                   >
                     <span>⚠️ Factory Reset (Wipe Data)</span>
                   </button>
                   <button 
-                    className="dropdown-item"
-                    style={{ color: 'var(--brand-blue)' }}
+                    className={`dropdown-item ${error ? 'disabled' : ''}`}
+                    style={{ color: 'var(--brand-blue)', opacity: error ? 0.5 : 1 }}
+                    disabled={!!error}
                     onClick={() => {
+                      if (error) return;
                       // Smart Suggestion Logic
                       const currentSem = settings.semester;
                       const currentAY = settings.academicYear;
@@ -1112,8 +1115,9 @@ export default function AdminDashboard() {
           <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="card-title">Faculty Checklists</h2>
             <button 
-              className="btn btn-primary btn-sm"
-              onClick={() => navigate('/admin/faculty/manage')}
+              className={`btn btn-primary btn-sm ${error ? 'disabled' : ''}`}
+              onClick={() => !error && navigate('/admin/faculty/manage')}
+              disabled={!!error}
             >
               + Register/Manage Faculty
             </button>
@@ -1253,52 +1257,87 @@ export default function AdminDashboard() {
                       </td>
                       <td data-label="Actions">
                         <div className="flex gap-2" style={{ justifyContent: 'flex-end' }}>
-                          <button
-                            className="btn-preview"
-                            title="Quick Preview"
-                            onClick={() => {
-                              const raw = checklist.raw;
-                              const subjects = raw.subjects || [];
-                              const otherDocs = raw.other_docs || [];
-                              
-                              // Create uploads map
-                              const uploadsMap = {};
-                              subjects.forEach(sub => {
-                                (sub.docs || []).forEach(doc => {
-                                  if (doc.type) {
-                                    const docTypeIdx = DEFAULT_DOCUMENTS.subjects.indexOf(doc.type);
-                                    if (docTypeIdx > -1) {
-                                      const key = `subject-${sub.id}-${docTypeIdx}`; 
-                                      if (!uploadsMap[key]) uploadsMap[key] = [];
-                                      uploadsMap[key].push(doc);
-                                    }
+                        <button
+                          className={`btn-preview-action ${error ? 'disabled' : ''}`}
+                          title="Quick Preview"
+                          disabled={!!error}
+                          onClick={() => {
+                            if (error) return;
+                            // ... (rest of logic remains same, just updating UI)
+                            const raw = checklist.raw;
+                            const subjects = raw.subjects || [];
+                            const otherDocs = raw.other_docs || [];
+                            
+                            // Create uploads map
+                            const uploadsMap = {};
+                            subjects.forEach(sub => {
+                              sub.docs?.forEach(doc => {
+                                if (doc.type) {
+                                  const docTypeIdx = DEFAULT_DOCUMENTS.subjects.indexOf(doc.type);
+                                  if (docTypeIdx > -1) {
+                                    const key = `subject-${sub.id}-${docTypeIdx}`; 
+                                    if (!uploadsMap[key]) uploadsMap[key] = [];
+                                    uploadsMap[key].push(doc);
                                   }
-                                });
-                              });
-
-                              otherDocs.forEach(item => {
-                                if (item.docs && item.docs.length > 0) {
-                                  uploadsMap[item.name || item.id] = item.docs;
                                 }
                               });
+                            });
 
-                              const profile = {
-                                ...checklist,
-                                subjects: raw.subjects || [],
-                                otherDocuments: DEFAULT_DOCUMENTS.other,
-                                uploads: uploadsMap
-                              };
-                              setPreviewData(profile);
-                              setShowPreviewModal(true);
-                            }}
-                          >
-                            👁️
-                          </button>
+                            otherDocs.forEach(item => {
+                              if (item.docs?.length > 0) {
+                                uploadsMap[item.name || item.id] = item.docs;
+                              }
+                            });
+
+                            setPreviewData({
+                              ...checklist,
+                              subjects: raw.subjects || [],
+                              otherDocuments: DEFAULT_DOCUMENTS.other,
+                              uploads: uploadsMap
+                            });
+                            setShowPreviewModal(true);
+                          }}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center', 
+                            gap: '6px',
+                            background: '#e0f2fe',
+                            color: '#0284c7',
+                            border: '1px solid #bae6fd',
+                            borderRadius: '6px',
+                            padding: '8px 12px',
+                            cursor: error ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.2s ease',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                            opacity: error ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                             if(!error) {
+                               e.currentTarget.style.background = '#bae6fd';
+                               e.currentTarget.style.transform = 'translateY(-1px)';
+                             }
+                          }}
+                          onMouseLeave={(e) => {
+                             if(!error) {
+                               e.currentTarget.style.background = '#e0f2fe';
+                               e.currentTarget.style.transform = 'none';
+                             }
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <span style={{ fontWeight: '600', fontSize: '14px' }}>Print View</span>
+                        </button>
                           <button
-                            className="btn btn-sm btn-primary"
-                            onClick={() => handleViewChecklist(checklist.id)}
+                            className={`btn btn-sm btn-primary ${error ? 'disabled' : ''}`}
+                            disabled={!!error}
+                            style={{ opacity: error ? 0.6 : 1 }}
+                            onClick={() => !error && handleViewChecklist(checklist.id)}
                           >
-                            Review
+                            Check Files
                           </button>
                         </div>
                       </td>
@@ -1454,7 +1493,7 @@ export default function AdminDashboard() {
                 
                 {/* Official Header */}
                 <div style={{ 
-                  border: '1px solid black', 
+                  border: '2px solid black', 
                   marginBottom: '20px', 
                   padding: '10px', 
                   display: 'flex', 
@@ -1573,6 +1612,27 @@ export default function AdminDashboard() {
                         })}
                      </tbody>
                   </table>
+                </div>
+
+                {/* Footer Notes & Signatures */}
+                <div className="print-footer-signatures" style={{ marginTop: '20px', fontSize: '9pt', color: 'black' }}>
+                  <div style={{ marginBottom: '20px' }}>
+                    <div style={{ fontWeight: 'bold' }}>* Licensure Educational Testing Center</div>
+                    <div style={{ fontStyle: 'italic', marginTop: '2px' }}>Note: The Department Chair is to put the date of submission.</div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div>
+                      <div style={{ marginBottom: '30px' }}>Checked and verified:</div>
+                      <div style={{ borderBottom: '1px solid black', width: '200px', marginBottom: '4px' }}></div>
+                      <div style={{ fontWeight: 'bold' }}>Department/Program Chair, {previewData.department || 'BPED'} Department</div>
+                    </div>
+                    <div>
+                      <div style={{ marginBottom: '30px' }}>Approved:</div>
+                      <div style={{ borderBottom: '1px solid black', width: '200px', marginBottom: '4px' }}></div>
+                      <div style={{ fontWeight: 'bold' }}>Dean, {previewData.college || 'College of Teacher Education'}</div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Print Footer */}

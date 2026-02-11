@@ -14,9 +14,9 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
       // If deadline is disabled, show neutral "Open" status
       if (!settings.deadlineEnabled) {
         setStatusClass('status-green');
-        setStatusIcon('🔓');
-        setStatusText('Submission is Open');
-        setTimeRemaining('No fixed deadline set by the Chair');
+        setStatusIcon('✨');
+        setStatusText('Active Submission Session');
+        setTimeRemaining('No fixed administrative deadline established.');
         return;
       }
 
@@ -35,7 +35,7 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
         setStatusClass('status-green');
         setStatusIcon('🏛️');
         setStatusText('Verified & Compliant');
-        setTimeRemaining('This checklist has been officially approved for this term.');
+        setTimeRemaining('This checklist has been officially verified by the department chair.');
         return;
       }
 
@@ -47,43 +47,43 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
 
         if (containsLateFiles) {
           setStatusClass('status-late');
-          setStatusIcon('⚠️');
-          setStatusText('Submitted - Contains Late Files');
+          setStatusIcon('📅');
+          setStatusText('Submitted (Late Updates)');
         } else if (submissionDate > deadlineDate) {
           setStatusClass('status-late');
-          setStatusIcon('🟣');
-          setStatusText('Submitted Late');
+          setStatusIcon('⌛');
+          setStatusText('Post-Deadline Submission');
         } else {
           setStatusClass('status-green');
-          setStatusIcon('✅');
-          setStatusText('Submitted on Time');
+          setStatusIcon('🛡️');
+          setStatusText('Compliant Submission');
         }
         
         if (latestUploadAt && lastActivityDate > submissionDate) {
-          setTimeRemaining(`Last Activity: ${lastActivityDate.toLocaleString()}`);
+          setTimeRemaining(`Final Activity: ${lastActivityDate.toLocaleString()}`);
         } else {
-          setTimeRemaining(`Submitted on ${submissionDate.toLocaleString()}`);
+          setTimeRemaining(`Successfully Logged: ${submissionDate.toLocaleString()}`);
         }
       } else if (isOverdue) {
         setStatusClass('status-red');
-        setStatusIcon('🚨');
-        setStatusText('OVERDUE');
-        setTimeRemaining(`Overdue by ${formatDistanceToNow(deadlineDate)}`);
+        setStatusIcon('⚠️');
+        setStatusText('Deadline Exceeded');
+        setTimeRemaining(`Term ended ${formatDistanceToNow(deadlineDate)} ago.`);
       } else if (hoursLeft < 24) {
         setStatusClass('status-red');
-        setStatusIcon('🔴');
-        setStatusText('Less than 24 hours remaining');
-        setTimeRemaining(formatDistanceToNow(deadlineDate, { addSuffix: true }));
+        setStatusIcon('🔥');
+        setStatusText('Critical: Under 24 Hours');
+        setTimeRemaining(`System closes ${formatDistanceToNow(deadlineDate, { addSuffix: true })}.`);
       } else if (daysLeft <= 7) {
         setStatusClass('status-yellow');
-        setStatusIcon('🟡');
+        setStatusIcon('⏳');
         setStatusText('Approaching Deadline');
-        setTimeRemaining(formatDistanceToNow(deadlineDate, { addSuffix: true }));
+        setTimeRemaining(`Concluding ${formatDistanceToNow(deadlineDate, { addSuffix: true })}.`);
       } else {
         setStatusClass('status-green');
-        setStatusIcon('🟢');
-        setStatusText('On Track');
-        setTimeRemaining(formatDistanceToNow(deadlineDate, { addSuffix: true }));
+        setStatusIcon('📝');
+        setStatusText('Compliance in Progress');
+        setTimeRemaining(`Standard deadline ${formatDistanceToNow(deadlineDate, { addSuffix: true })}.`);
       }
     };
 
@@ -109,44 +109,39 @@ export default function DeadlineBanner({ deadline, submittedAt, status, latestUp
   return (
     <div className={`deadline-banner ${statusClass}`}>
       <div className="deadline-header-row">
-        <div className="deadline-title-group">
-          <span className="deadline-mini-label">DEADLINE:</span>
-          {settings.deadlineEnabled ? (
+        <div className={`deadline-status-pill ${statusClass}`}>
+          <span className="status-pill-icon">{statusIcon}</span>
+          <span className="status-pill-text">{statusText}</span>
+        </div>
+
+        {settings.deadlineEnabled && (
+          <div className="deadline-title-group">
+            <span className="deadline-mini-label">TERM DEADLINE</span>
             <span className="deadline-date-small">
               {deadlineDate.toLocaleDateString('en-US', {
                 month: 'short',
                 day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
+                year: 'numeric'
               })}
             </span>
-          ) : (
-            <span className="deadline-date-small">No fixed deadline</span>
-          )}
-        </div>
-        
-        <div className={`deadline-status-pill ${statusClass}`}>
-          {statusIcon} {statusText}
-        </div>
+          </div>
+        )}
       </div>
   
       <div className="deadline-timer-row">
-        <span className="countdown-timer">{timeRemaining}</span>
+        <div className="countdown-timer-wrapper">
+          <span className="countdown-timer">{timeRemaining}</span>
+        </div>
       </div>
   
       {settings.deadlineEnabled && (
         <div className="deadline-progress-mini">
-          <div className="progress" style={{ height: '4px' }}>
-            <div 
-              className={`progress-bar ${statusClass === 'status-red' ? 'danger' : statusClass === 'status-yellow' ? 'warning' : ''}`}
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
+          <div 
+            className="progress-bar"
+            style={{ width: `${progress}%` }}
+          ></div>
         </div>
       )}
-
-
     </div>
   );
 }

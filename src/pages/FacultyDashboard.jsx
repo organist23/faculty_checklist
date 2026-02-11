@@ -34,49 +34,108 @@ const PhotoGrid = ({ uploads, onRemove, disabled, deadline, onPreview }) => {
   const remainingCount = uploads.length - displayLimit;
 
   return (
-    <div className="photo-preview">
+    <span className="photo-preview" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', padding: '4px 0' }}>
       {displayUploads.map((file, idx) => {
         const isLate = deadline && file.uploadedAt && new Date(file.uploadedAt) > new Date(deadline);
-        const statusClass = isLate ? 'late' : 'on-time';
+        const statusColor = isLate ? 'var(--nvsu-red)' : 'var(--brand-green)';
         
         return (
-          <div 
+          <span 
             key={idx} 
-            className={`photo-thumbnail ${statusClass}`} 
+            className="photo-thumbnail-container"
             title={`Uploaded: ${new Date(file.uploadedAt || Date.now()).toLocaleString()} (${isLate ? 'LATE' : 'On-time'})`}
+            style={{ 
+              position: 'relative', 
+              display: 'inline-block',
+              width: '74px',
+              height: '74px',
+              borderRadius: '16px',
+              overflow: 'hidden',
+              boxShadow: '0 6px 15px rgba(0,0,0,0.15)',
+              background: 'var(--gray-100)',
+              transition: 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)'
+            }}
+            onMouseOver={e => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseOut={e => e.currentTarget.style.transform = 'translateY(0)'}
           >
-            <div className={`status-indicator ${statusClass}`}></div>
+            {/* Smooth Status Bar at bottom */}
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '3px', background: statusColor, zIndex: 3 }}></div>
+            
             {file.preview ? (
               <img 
                 src={file.preview} 
                 alt={file.name} 
                 onClick={() => onPreview(file, uploads, idx)}
-                style={{ cursor: 'pointer' }} 
+                style={{ 
+                  cursor: 'pointer', 
+                  display: 'block', 
+                  width: '100%', 
+                  height: '100%', 
+                  objectFit: 'cover' 
+                }} 
               />
             ) : (
-              <div className="file-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '10px' }}>📄</div>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '14px', background: '#f1f5f9' }}>📄</span>
             )}
+
             {!disabled && (
               <button
-                className="photo-remove"
+                style={{ 
+                  position: 'absolute', 
+                  top: '2px', 
+                  right: '2px', 
+                  width: '18px', 
+                  height: '18px', 
+                  borderRadius: '50%', 
+                  background: 'rgba(255,255,255,0.9)', 
+                  border: '1px solid var(--gray-200)', 
+                  color: 'var(--nvsu-red)', 
+                  fontSize: '12px', 
+                  fontWeight: 'bold', 
+                  cursor: 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  zIndex: 4,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                  transition: 'all 0.2s'
+                }}
                 onClick={(e) => {
                   e.preventDefault();
                   onRemove(idx);
                 }}
+                onMouseOver={e => { e.currentTarget.style.background = 'var(--nvsu-red)'; e.currentTarget.style.color = 'white'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.9)'; e.currentTarget.style.color = 'var(--nvsu-red)'; }}
                 title="Remove"
               >
                 ×
               </button>
             )}
+
             {idx === displayLimit - 1 && remainingCount > 0 && (
-              <div className="photo-more-indicator">
+              <div 
+                style={{ 
+                  position: 'absolute', 
+                  inset: 0, 
+                  background: 'rgba(0,0,0,0.5)', 
+                  backdropFilter: 'blur(2px)', 
+                  color: 'white', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  fontSize: '11px', 
+                  fontWeight: '800', 
+                  zIndex: 2,
+                  pointerEvents: 'none'
+                }}
+              >
                 +{remainingCount + 1}
               </div>
             )}
-          </div>
+          </span>
         );
       })}
-    </div>
+    </span>
   );
 };
 
@@ -104,16 +163,15 @@ export default function FacultyDashboard() {
   const [showSubjectManager, setShowSubjectManager] = useState(false);
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
   const [subjectError, setSubjectError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [internalSearch, setInternalSearch] = useState('');
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
 
-  // Debounce search input
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(internalSearch);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [internalSearch]);
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   
   // Media Capture Modal State
   const [mediaCapture, setMediaCapture] = useState({
@@ -129,6 +187,9 @@ export default function FacultyDashboard() {
     files: [], // Array of all files in the current group
     currentIndex: 0,
     zoom: 1,
+    offset: { x: 0, y: 0 },
+    isDragging: false,
+    dragStart: { x: 0, y: 0 },
     contextKey: null // Track context for removal
   });
 
@@ -179,28 +240,35 @@ export default function FacultyDashboard() {
 
   const fetchAvailableTerms = async () => {
     try {
-      const { data, error } = await supabase
-        .from('checklists')
-        .select('term_id')
-        .eq('faculty_id', user.id);
+      // 1. Try to fetch ALL terms from the system (requires RPC)
+      const { data: globalTerms, error: rpcError } = await supabase.rpc('get_all_terms');
       
-      if (error) throw error;
-      const terms = [...new Set(data.map(c => c.term_id))];
-      setAvailableTerms(terms);
-      
-      // Smart Auto-Switch Logic REMOVED/DISABLED:
-      // We should NOT force switch the user to a newer term if they explicitly selected something else.
-      // The default behavior should be to respect the user's selection or default to LIVE only on initial load.
-      /*
-      if (settings.semester && settings.academicYear) {
-          const currentTermId = `${settings.academicYear}-${settings.semester}`;
-          const newerTerm = terms.find(t => t > currentTermId);
-          if (newerTerm && selectedTerm === 'LIVE') {
-             console.log('Found newer term than settings, auto-switching:', newerTerm);
-             setSelectedTerm(newerTerm);
-          }
+      let terms = [];
+      if (!rpcError && globalTerms) {
+         terms = [...new Set(globalTerms.map(t => t.term_id))];
+      } else {
+         // Fallback: Fetch terms this specific faculty has participated in
+         console.warn('RPC get_all_terms failed, falling back to local history:', rpcError);
+         const { data, error } = await supabase
+          .from('checklists')
+          .select('term_id')
+          .eq('faculty_id', user.id);
+        
+         if (!error && data) {
+            terms = [...new Set(data.map(c => c.term_id))];
+         }
       }
-      */
+      
+      // Ensure current live term is always in the list even if no checklist exists yet
+      const liveTerm = `${settings.academicYear}-${settings.semester === '1' ? 'FIRST SEMESTER' : settings.semester === '2' ? 'SECOND SEMESTER' : settings.semester}`;
+      if (!terms.includes(liveTerm)) {
+          terms.push(liveTerm);
+      }
+      
+      // Sort terms (newest/descending)
+      terms.sort().reverse();
+      
+      setAvailableTerms(terms);
     } catch (err) {
       console.error('Fetch Terms Error:', err);
     }
@@ -234,8 +302,8 @@ export default function FacultyDashboard() {
 
       if (error) throw error;
 
-      // 2. If not found and it's for the LIVE term, create one
-      if (!data && selectedTerm === 'LIVE') {
+      // 2. If not found, create one (even for past terms if selected)
+      if (!data) {
         const initialSubjects = [];
 
         const initialOther = DEFAULT_DOCUMENTS.other.map((name, idx) => ({
@@ -422,10 +490,12 @@ export default function FacultyDashboard() {
       return;
     }
 
+    /* ALLOW PREVIOUS SEMESTER UPLOADS
     if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
       addToast('Cannot manage subjects in past semesters.', 'error');
       return;
     }
+    */
     
     // Check for duplicate code + name combination to prevent exact duplicates
     const normalizedName = subjectForm.name.trim().toLowerCase();
@@ -479,10 +549,12 @@ export default function FacultyDashboard() {
     const subject = checklist.subjects.find(s => s.id === subjectId);
     if (!subject) return;
 
+    /* ALLOW PREVIOUS SEMESTER UPLOADS
     if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
       addToast('Cannot manage subjects in past semesters.', 'error');
       return;
     }
+    */
 
     if (subject.docs && subject.docs.length > 0) {
       const confirmed = await confirm(
@@ -528,10 +600,12 @@ export default function FacultyDashboard() {
   };
 
   const handleUpdateSubject = async (id, newName, newCode) => {
+    /* ALLOW PREVIOUS SEMESTER UPLOADS
     if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
       addToast('Cannot manage subjects in past semesters.', 'error');
       return;
     }
+    */
 
     // Optimistic
     const newSubjects = checklist.subjects.map(s => 
@@ -646,10 +720,12 @@ export default function FacultyDashboard() {
        return;
     }
     
+    /* ALLOW PREVIOUS SEMESTER UPLOADS
     if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
        addToast('Cannot upload documents for past semesters.', 'error');
        return;
     }
+    */
     
     // Set specific item as uploading
     setUploadingItems(prev => ({ ...prev, [key]: true }));
@@ -795,11 +871,14 @@ export default function FacultyDashboard() {
        addToast('No internet connection. Cannot remove file.', 'error');
        return;
     }
+    const isEditable = true; // Always allow editing for past semesters
+    /* ALLOW PREVIOUS SEMESTER UPLOADS
     const isEditable = selectedTerm === 'LIVE' || !isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
     if (!isEditable) {
        addToast('Cannot remove documents from previous semesters.', 'error');
        return;
     }
+    */
     try {
       let docToRemove;
       let type, itemId, docName;
@@ -913,7 +992,7 @@ export default function FacultyDashboard() {
       setShowSubmitModal(false);
     } catch (err) {
       console.error('Submit Error:', err);
-      addToast('Submission failed.', 'error');
+      addToast('Please check your internet connection or try again later.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -959,17 +1038,10 @@ export default function FacultyDashboard() {
   const latestUploadAt = useMemo(() => calculateLatestUpload(), [checklist]);
 
 
-  // Debounce search input
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearchQuery(internalSearch);
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [internalSearch]);
 
-  // Search Logic (Memoized)
+  // Search Logic (Memoized) - Instant Transparency
   const { visibleSubjects, visibleSubjectColumns, visibleOtherDocs, isSearchActive, hasResults } = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
+    const q = internalSearch.toLowerCase().trim();
     
     if (!q) {
       return { 
@@ -981,49 +1053,61 @@ export default function FacultyDashboard() {
       };
     }
 
-    // Tokenize query for flexible matching (e.g. "software eng" matches "Software Engineering")
+    // Tokenize query for flexible matching
     const tokens = q.split(/\s+/).filter(t => t.length > 0);
     
     const matchText = (text) => {
       if (!text) return false;
       const normalized = text.toString().toLowerCase();
-      // "Transparent" matching: ensure every token appears somewhere in the text
       return tokens.every(token => normalized.includes(token));
     };
 
-    // Section 1 Logic
+    // Document Type Matching
     const matchedSubjectDocs = DEFAULT_DOCUMENTS.subjects.filter(d => matchText(d));
+    const isDocumentSearch = matchedSubjectDocs.length > 0;
     
-    // Robust Subject Matching
+    // Subject Matching
     const matchedSubjects = (checklist.subjects || []).filter(s => {
-       return matchText(s.name) || matchText(s.code);
+       const basicMatch = matchText(s.name) || matchText(s.code);
+       
+       // If it's a doc-specific search (e.g. "Rubrics"), only show subjects that HAVE that doc
+       if (isDocumentSearch) {
+         const hasDocUpload = s.docs.some(d => matchedSubjectDocs.includes(d.type));
+         return basicMatch || hasDocUpload;
+       }
+       
+       return basicMatch;
     });
 
     let vSubjects = checklist.subjects || [];
     let vColumns = DEFAULT_DOCUMENTS.subjects;
 
-    const hasDocMatch = matchedSubjectDocs.length > 0;
     const hasSubMatch = matchedSubjects.length > 0;
 
-    if (hasDocMatch && !hasSubMatch) {
-      // User searched specific doc type -> Show that col for ALL subjects
+    if (isDocumentSearch && !hasSubMatch) {
+      // User searched for a document -> show only subjects that have it
       vColumns = matchedSubjectDocs;
-    } else if (hasSubMatch && !hasDocMatch) {
-        // User searched specific subject -> Show that row with ALL cols
-        vSubjects = matchedSubjects;
-    } else if (hasSubMatch && hasDocMatch) {
-        // Ambiguous or specific intersection -> Show matched rows and matched cols
-        vSubjects = matchedSubjects;
-        vColumns = matchedSubjectDocs;
+      vSubjects = (checklist.subjects || []).filter(s => 
+        s.docs.some(d => matchedSubjectDocs.includes(d.type))
+      );
+    } else if (hasSubMatch && !isDocumentSearch) {
+      vSubjects = matchedSubjects;
+    } else if (hasSubMatch && isDocumentSearch) {
+      vSubjects = matchedSubjects;
+      vColumns = matchedSubjectDocs;
     } else {
-        // No matches found in Section 1 context
-        vSubjects = [];
+      vSubjects = [];
     }
 
-    // Section 2 Logic
-    const vOtherDocs = (checklist.other_docs || []).filter(item => 
-      !q || matchText(item.name)
-    );
+    // Section 2 Logic - Content Aware
+    const vOtherDocs = (checklist.other_docs || []).filter(item => {
+      const nameMatch = matchText(item.name);
+      const hasContent = item.docs && item.docs.length > 0;
+      
+      // If searching for something that matches a document type name, only show if it has content
+      // This minimizes the "hassle" of seeing empty slots during targeted lookups
+      return nameMatch && (isDocumentSearch ? hasContent : true);
+    });
 
     const active = !!q;
     const results = vSubjects.length > 0 || vOtherDocs.length > 0;
@@ -1035,7 +1119,7 @@ export default function FacultyDashboard() {
       isSearchActive: active, 
       hasResults: results 
     };
-  }, [checklist, searchQuery]);
+  }, [checklist, internalSearch]);
 
   return (
     <div>
@@ -1088,36 +1172,60 @@ export default function FacultyDashboard() {
         )}
 
         {/* Page Title & History Selector */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 'var(--space-6)', flexWrap: 'wrap', gap: 'var(--space-4)' }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: viewportWidth < 768 ? 'flex-start' : 'flex-end', 
+          marginBottom: viewportWidth < 768 ? '16px' : 'var(--space-6)', 
+          flexDirection: viewportWidth < 768 ? 'column' : 'row',
+          gap: viewportWidth < 768 ? '12px' : 'var(--space-4)' 
+        }}>
           <div>
-            <h1 style={{ fontSize: 'var(--text-2xl)' }}>Welcome, {user?.name}</h1>
-            <p className="text-gray">Faculty Compliance Checklist Dashboard</p>
+            <h1 style={{ 
+              fontSize: viewportWidth < 768 ? '1.5rem' : 'var(--text-2xl)',
+              fontWeight: '900',
+              color: 'var(--brand-blue-dark)',
+              marginBottom: '4px'
+            }}>Welcome, {user?.name}</h1>
+            <p className="text-gray" style={{ fontSize: viewportWidth < 768 ? '0.85rem' : '1rem' }}>Faculty Compliance Checklist Dashboard</p>
           </div>
 
           <div className="history-picker" style={{ 
             display: 'flex', 
             flexDirection: 'row', 
             alignItems: 'flex-end', 
-            gap: '10px',
-            width: '100%',
-            maxWidth: 'none',
+            gap: viewportWidth < 768 ? '8px' : '10px',
+            width: viewportWidth < 768 ? '100%' : 'auto',
             flexWrap: 'wrap' 
           }}>
-            <div style={{ flex: '1 1 240px' }}>
-              <label className="form-label" style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: 'bold', color: 'var(--brand-blue)' }}>
-                📂 Past Semester History (Read-Only)
+            <div style={{ flex: viewportWidth < 768 ? '1 1 100%' : '1 1 240px' }}>
+              <label className="form-label" style={{ 
+                fontSize: '9px', 
+                textTransform: 'uppercase', 
+                fontWeight: '900', 
+                color: 'var(--brand-blue)',
+                letterSpacing: '0.5px',
+                marginBottom: '4px',
+                display: 'block'
+              }}>
+                📂 Term History (Read-Only)
               </label>
                 <select 
                   className="form-select" 
                   value={selectedTerm}
                   onChange={(e) => setSelectedTerm(e.target.value)}
-                  style={{ minWidth: '220px', border: '2px solid var(--nvsu-green-dark)' }}
+                  style={{ 
+                    minWidth: viewportWidth < 768 ? '0' : '220px', 
+                    width: '100%',
+                    border: '2px solid var(--nvsu-green-dark)',
+                    height: viewportWidth < 768 ? '40px' : '48px',
+                    fontSize: viewportWidth < 768 ? '0.85rem' : '1rem'
+                  }}
                 >
-                  <option value="LIVE">🟢 Current: {settings.semester} ({settings.academicYear})</option>
+                  <option value="LIVE">🟢 Current Term</option>
                   {availableTerms
                     .filter(t => {
                       const normCurrent = `${settings.academicYear}-${settings.semester}`;
-                      // Normalize the archived term for comparison
                       const parts = t.split('-');
                       if (parts.length < 2) return true;
                       const ay = `${parts[0]}-${parts[1]}`;
@@ -1128,7 +1236,7 @@ export default function FacultyDashboard() {
                       return `${ay}-${sem}` !== normCurrent;
                     })
                     .map(term => (
-                      <option key={term} value={term}>📂 Archive: {term.replace(/-/g, ' ')}</option>
+                      <option key={term} value={term}>📂 {term.replace(/-/g, ' ')}</option>
                     ))
                   }
                 </select>
@@ -1137,13 +1245,14 @@ export default function FacultyDashboard() {
               <button 
                 className={`btn ${isExporting ? 'btn-secondary' : 'btn-primary'}`}
                 style={{ 
-                  height: '42px', 
+                  height: viewportWidth < 768 ? '40px' : '48px', 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
-                  gap: '8px', 
-                  flex: '1 1 180px',
-                  minWidth: '200px'
+                  gap: '6px', 
+                  flex: viewportWidth < 768 ? '1 1 100%' : '1 1 180px',
+                  minWidth: viewportWidth < 768 ? '0' : '200px',
+                  fontSize: viewportWidth < 768 ? '0.8rem' : '0.9rem'
                 }}
                 onClick={handleDownloadArchive}
                 disabled={isExporting}
@@ -1151,10 +1260,10 @@ export default function FacultyDashboard() {
                 {isExporting ? (
                   <>
                     <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', borderTopColor: 'white' }}></div>
-                    <span>{exportProgress.total > 0 ? `${Math.round((exportProgress.current / exportProgress.total) * 100)}% Bundling...` : 'Processing...'}</span>
+                    <span>{exportProgress.total > 0 ? `${Math.round((exportProgress.current / exportProgress.total) * 100)}%` : '...'}</span>
                   </>
                 ) : (
-                  <>📥 Download Semester ZIP</>
+                  <>📥 Download ZIP</>
                 )}
               </button>
             )}
@@ -1163,38 +1272,116 @@ export default function FacultyDashboard() {
 
 
 
-        {/* Statistics Dashboard */}
-        <div className="dashboard-stats">
-          <div className="stat-card green" style={{ color: 'var(--brand-blue)', background: 'var(--brand-blue-pale)' }}>
-            <div className="stat-label">Completion Rate</div>
-            <div className="stat-value">{progress.total}%</div>
-            <div className="stat-description">
-              Overall progress
+        {/* Premium Statistics Dashboard - Compact Redesign */}
+        <div className="dashboard-stats" style={{ 
+          gap: viewportWidth < 768 ? '10px' : '16px', 
+          marginBottom: '24px', 
+          display: 'grid', 
+          gridTemplateColumns: viewportWidth < 768 ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(200px, 1fr))' 
+        }}>
+          {/* Card 1: Completion */}
+          <div 
+            className="stat-card" 
+            style={{ 
+              background: 'linear-gradient(135deg, #ffffff 0%, #e0f2fe 100%)',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              borderBottom: '4px solid var(--brand-blue)',
+              boxShadow: '0 12px 20px -5px rgba(26, 67, 128, 0.12)',
+              padding: viewportWidth < 768 ? '12px' : '20px',
+              borderRadius: viewportWidth < 768 ? '16px' : '20px',
+              position: 'relative',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+              cursor: 'default'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <div className="stat-label" style={{ color: 'var(--brand-blue)', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: viewportWidth < 768 ? '8px' : '12px' }}>Completion Rate</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
+              <div className="stat-value" style={{ color: 'var(--brand-blue-dark)', fontSize: viewportWidth < 768 ? '1.4rem' : '1.8rem', fontWeight: '900', lineHeight: 1 }}>{progress.total}%</div>
+              <div style={{ fontSize: viewportWidth < 768 ? '0.65rem' : '0.8rem', fontWeight: '600', color: 'var(--brand-blue)' }}>done</div>
+            </div>
+            <div style={{ width: '100%', height: viewportWidth < 768 ? '4px' : '6px', background: 'rgba(26, 67, 128, 0.1)', borderRadius: '10px', marginTop: viewportWidth < 768 ? '8px' : '12px', overflow: 'hidden' }}>
+              <div style={{ width: `${progress.total}%`, height: '100%', background: 'linear-gradient(to right, var(--brand-blue), var(--brand-blue-light))', borderRadius: '10px', transition: 'width 1.5s ease-out' }}></div>
             </div>
           </div>
 
-          <div className="stat-card green" style={{ color: 'var(--brand-green)' }}>
-            <div className="stat-label">Total Uploaded</div>
-            <div className="stat-value">{progress.uploadedCount || 0}</div>
-            <div className="stat-description">
-              Documents submitted
-            </div>
+          {/* Card 2: Uploaded */}
+          <div 
+            className="stat-card" 
+            style={{ 
+              background: 'linear-gradient(135deg, #ffffff 0%, #dcfce7 100%)',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              borderBottom: '4px solid var(--brand-green)',
+              boxShadow: '0 12px 20px -5px rgba(0, 104, 55, 0.12)',
+              padding: viewportWidth < 768 ? '12px' : '20px',
+              borderRadius: viewportWidth < 768 ? '16px' : '20px',
+              position: 'relative',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+              cursor: 'default'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <div className="stat-label" style={{ color: 'var(--brand-green)', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: viewportWidth < 768 ? '8px' : '12px' }}>Uploaded Docs</div>
+            <div className="stat-value" style={{ color: 'var(--brand-blue-dark)', fontSize: viewportWidth < 768 ? '1.4rem' : '1.8rem', fontWeight: '900', lineHeight: 1 }}>{progress.uploadedCount || 0}</div>
+            <div className="stat-description" style={{ color: 'var(--brand-green)', fontWeight: '600', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', marginTop: viewportWidth < 768 ? '4px' : '8px' }}>Verified & Drafts</div>
           </div>
 
-          <div className="stat-card yellow" style={{ color: 'var(--nvsu-yellow-dark)' }}>
-            <div className="stat-label">Pending Proofs</div>
-            <div className="stat-value">{progress.remainingCount || 0}</div>
-            <div className="stat-description">
-              Items to complete
-            </div>
+          {/* Card 3: Pending */}
+          <div 
+            className="stat-card" 
+            style={{ 
+              background: 'linear-gradient(135deg, #ffffff 0%, #fef9c3 100%)',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              borderBottom: '4px solid var(--nvsu-yellow-dark)',
+              boxShadow: '0 12px 20px -5px rgba(217, 197, 0, 0.12)',
+              padding: viewportWidth < 768 ? '12px' : '20px',
+              borderRadius: viewportWidth < 768 ? '16px' : '20px',
+              position: 'relative',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+              cursor: 'default'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <div className="stat-label" style={{ color: '#92400e', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: viewportWidth < 768 ? '8px' : '12px' }}>Pending Items</div>
+            <div className="stat-value" style={{ color: 'var(--brand-blue-dark)', fontSize: viewportWidth < 768 ? '1.4rem' : '1.8rem', fontWeight: '900', lineHeight: 1 }}>{progress.remainingCount || 0}</div>
+            <div className="stat-description" style={{ color: '#b45309', fontWeight: '600', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', marginTop: viewportWidth < 768 ? '4px' : '8px' }}>Next priority</div>
           </div>
 
-          <div className="stat-card info" style={{ color: 'var(--brand-blue)' }}>
-            <div className="stat-label">Active Subjects</div>
-            <div className="stat-value">{checklist.loading ? <div className="skeleton" style={{ width: '40px', height: '1em' }}></div> : checklist.subjects.length}</div>
-            <div className="stat-description">
-              Total classes
-            </div>
+          {/* Card 4: Classes */}
+          <div 
+            className="stat-card" 
+            style={{ 
+              background: 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)',
+              borderTop: 'none',
+              borderLeft: 'none',
+              borderRight: 'none',
+              borderBottom: '4px solid var(--gray-400)',
+              boxShadow: '0 12px 20px -5px rgba(0, 0, 0, 0.08)',
+              padding: viewportWidth < 768 ? '12px' : '20px',
+              borderRadius: viewportWidth < 768 ? '16px' : '20px',
+              position: 'relative',
+              overflow: 'hidden',
+              transition: 'all 0.3s ease',
+              cursor: 'default'
+            }}
+            onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-4px)'}
+            onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <div className="stat-label" style={{ color: 'var(--gray-500)', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: viewportWidth < 768 ? '8px' : '12px' }}>Classes</div>
+            <div className="stat-value" style={{ color: 'var(--brand-blue-dark)', fontSize: viewportWidth < 768 ? '1.4rem' : '1.8rem', fontWeight: '900', lineHeight: 1 }}>{checklist.loading ? "..." : checklist.subjects.length}</div>
+            <div className="stat-description" style={{ color: 'var(--gray-600)', fontWeight: '600', fontSize: viewportWidth < 768 ? '0.65rem' : '0.75rem', marginTop: viewportWidth < 768 ? '4px' : '8px' }}>Active Subjects</div>
           </div>
         </div>
 
@@ -1220,80 +1407,132 @@ export default function FacultyDashboard() {
           </div>
         ) : (
           <>
-            {/* Faculty Information */}
-            <div className="card mb-6">
-          <div className="card-header" style={{ padding: 'var(--space-responsive, var(--space-4))' }}>
-            <h2 className="card-title">Profile Context</h2>
-          </div>
-          <div className="card-body" style={{ padding: 'var(--space-responsive, var(--space-4))' }}>
-            <div className="grid grid-cols-2 gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-              <div style={{ fontSize: 'var(--text-sm)' }}>
-                <span className="text-gray" style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: '800', display: 'block' }}>College</span>
-                <strong>{checklist.college}</strong>
+            {/* Stylized Profile Context */}
+            <div style={{ 
+              background: '#ffffff', 
+              borderRadius: '20px', 
+              padding: viewportWidth < 768 ? '12px 16px' : '16px 24px', 
+              marginBottom: '20px', 
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+              border: '1px solid var(--gray-100)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: viewportWidth < 768 ? '12px' : '24px',
+              alignItems: 'center'
+            }}>
+              <div style={{ flex: viewportWidth < 768 ? '1 1 100%' : '1 1 200px' }}>
+                <span className="text-gray" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: '900', letterSpacing: '0.05em', color: 'var(--brand-blue)', display: 'block', marginBottom: '4px' }}>College / Department</span>
+                <span style={{ fontSize: viewportWidth < 768 ? '0.85rem' : '0.95rem', fontWeight: '700', color: 'var(--gray-800)' }}>{checklist.college} — {checklist.department}</span>
               </div>
-              <div style={{ fontSize: 'var(--text-sm)' }}>
-                <span className="text-gray" style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: '800', display: 'block' }}>Department</span>
-                <strong>{checklist.department}</strong>
+              
+              <div style={{ width: '1px', height: '30px', background: 'var(--gray-100)', display: viewportWidth < 768 ? 'none' : 'block' }}></div>
+
+              <div style={{ flex: viewportWidth < 768 ? '1 1 100%' : '0 1 auto' }}>
+                <span className="text-gray" style={{ textTransform: 'uppercase', fontSize: '9px', fontWeight: '900', letterSpacing: '0.05em', color: 'var(--brand-blue)', display: 'block', marginBottom: '4px' }}>Current Term</span>
+                <span style={{ fontSize: viewportWidth < 768 ? '0.85rem' : '0.95rem', fontWeight: '700', color: 'var(--gray-800)' }}>{checklist.semester} ({checklist.academicYear})</span>
               </div>
-              <div style={{ fontSize: 'var(--text-sm)' }}>
-                <span className="text-gray" style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: '800', display: 'block' }}>Term</span>
-                <strong>{checklist.semester}</strong>
-              </div>
-              <div style={{ fontSize: 'var(--text-sm)' }}>
-                <span className="text-gray" style={{ textTransform: 'uppercase', fontSize: '10px', fontWeight: '800', display: 'block' }}>Academic Year</span>
-                <strong>{checklist.academicYear}</strong>
+
+              <div style={{ flex: '0 0 auto', marginLeft: viewportWidth < 768 ? '0' : 'auto' }}>
+                <div style={{ 
+                  background: 'var(--brand-blue-pale)', 
+                  color: 'var(--brand-blue-dark)', 
+                  padding: '4px 10px', 
+                  borderRadius: '10px', 
+                  fontSize: '0.65rem', 
+                  fontWeight: '900', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px' 
+                }}>
+                  FACULTY CONTEXT
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Search Bar */}
-        <div style={{ marginBottom: 'var(--space-6)', position: 'relative' }}>
+        {/* Modern Search Interface */}
+        <div style={{ marginBottom: viewportWidth < 768 ? '20px' : '32px', position: 'relative' }}>
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
-            background: 'rgba(255, 255, 255, 0.95)', 
-            backdropFilter: 'blur(4px)',
-            borderRadius: 'var(--radius-md)', 
-            padding: '0 var(--space-4)', 
-            border: '1px solid var(--gray-300)', 
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)' 
-          }}>
-            <span style={{ fontSize: '1.2rem', marginRight: 'var(--space-2)' }}>🔍</span>
+            background: '#ffffff', 
+            borderRadius: '16px', 
+            padding: viewportWidth < 768 ? '0 12px' : '2px 8px 2px 20px', 
+            border: '2px solid var(--gray-100)', 
+            boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05)',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            height: viewportWidth < 768 ? '48px' : '56px'
+          }}
+          className="search-container-hover"
+          >
+            <span style={{ fontSize: viewportWidth < 768 ? '1rem' : '1.2rem', color: 'var(--gray-400)', marginRight: viewportWidth < 768 ? '10px' : '16px' }}>🔍</span>
             <input 
               type="text" 
-              placeholder="Search for documents or subjects..." 
+              placeholder={viewportWidth < 768 ? "Find subjects..." : "Search for subjects, documents, or status..."}
               value={internalSearch}
               onChange={(e) => setInternalSearch(e.target.value)}
-              style={{ flex: 1, border: 'none', padding: 'var(--space-3) 0', fontSize: '1rem', outline: 'none', background: 'transparent' }}
+              style={{ flex: 1, border: 'none', fontSize: viewportWidth < 768 ? '0.9rem' : '1.05rem', outline: 'none', background: 'transparent', fontWeight: '500', color: 'var(--gray-800)' }}
             />
             {internalSearch && (
               <button 
                 onClick={() => setInternalSearch('')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--gray-500)', padding: 'var(--space-2)' }}
-                title="Clear Search"
-              >
-                ✕
-              </button>
+                style={{ 
+                  background: 'var(--gray-100)', 
+                  border: 'none', 
+                  width: '28px', 
+                  height: '28px', 
+                  borderRadius: '50%', 
+                  color: 'var(--gray-600)', 
+                  cursor: 'pointer', 
+                  margin: '0 8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  fontSize: '10px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-200)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'var(--gray-100)'}
+              >✕</button>
             )}
           </div>
         </div>
 
+        {/* Search Results Priority Logic: Hide empty sections when searching */}
+        {isSearchActive && !hasResults && (
+          <div className="card shadow-sm animate-fade-in" style={{ textAlign: 'center', padding: 'var(--space-12)', borderRadius: '24px', background: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(10px)', border: '2px dashed var(--gray-200)' }}>
+            <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🔎</div>
+            <h3 style={{ color: 'var(--gray-600)', marginBottom: 'var(--space-2)' }}>No matching documents found</h3>
+            <p className="text-gray">Try adjusting your keywords or clearing the filter.</p>
+            <button className="btn btn-secondary mt-4" onClick={() => setInternalSearch('')}>Clear Search</button>
+          </div>
+        )}
+
         {/* Section 1: Documents by Subject */}
-        {visibleSubjects.length > 0 && (
-        <div className="card mb-6">
-          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 className="card-title">Section 1: Documents by Subject {isSearchActive && <span className="text-gray" style={{ fontSize: '0.8em', marginLeft: '10px' }}>(Filtered)</span>}</h2>
-            {/* Show Manage Subjects for LIVE, Current, or Future terms */}
-            {(selectedTerm === 'LIVE' || !isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) && (
-              <button 
-                className="btn btn-secondary" 
-                style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                onClick={() => setShowSubjectManager(true)}
+        {((!isSearchActive && (visibleSubjects.length > 0 || selectedTerm === 'LIVE')) || 
+          (isSearchActive && visibleSubjects.length > 0)) && (
+        <div className="card mb-8" style={{ border: 'none', boxShadow: '0 4px 20px -5px rgba(0,0,0,0.08)', borderRadius: '24px', overflow: 'hidden' }}>
+          <div style={{ 
+            padding: '24px 32px', 
+            background: 'linear-gradient(to right, #f8fafc, #ffffff)', 
+            borderBottom: '1px solid var(--gray-100)',
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '16px'
+          }}>
+            <h2 className="card-title" style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ background: 'var(--brand-blue-pale)', width: '36px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>📚</span>
+              Section 1: Documents by Subject {isSearchActive && <span className="text-gray" style={{ fontSize: '0.75em', fontWeight: '500' }}>(Filtered)</span>}
+            </h2>
+            <button 
+                className={`btn btn-secondary ${checklist.error ? 'disabled' : ''}`} 
+                style={{ fontSize: '0.85rem', padding: '8px 20px', borderRadius: '12px', background: '#ffffff', border: '1px solid var(--gray-200)', fontWeight: '700', opacity: checklist.error ? 0.5 : 1 }}
+                onClick={() => !checklist.error && setShowSubjectManager(true)}
+                disabled={!!checklist.error}
               >
                 ⚙️ Manage Subjects
               </button>
-            )}
           </div>
           
           <div className="table-responsive">
@@ -1307,6 +1546,13 @@ export default function FacultyDashboard() {
                 </tr>
               </thead>
               <tbody>
+                {visibleSubjects.length === 0 && (
+                   <tr>
+                     <td colSpan={visibleSubjectColumns.length + 1} style={{ textAlign: 'center', padding: 'var(--space-8)', color: 'var(--gray-500)' }}>
+                        {internalSearch ? "No matching subjects found." : (selectedTerm === 'LIVE' || !isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) ? "No subjects added yet. Click 'Manage Subjects' to add your classes." : "No subjects in this term."}
+                     </td>
+                   </tr>
+                )}
                 {visibleSubjects.map((subject) => (
                   <tr key={subject.id}>
                     <td data-label="Subject">
@@ -1315,16 +1561,29 @@ export default function FacultyDashboard() {
                     {visibleSubjectColumns.map((doc, docIdx) => {
                       const key = `subject-${subject.id}-${DEFAULT_DOCUMENTS.subjects.indexOf(doc)}`;
                       const hasUpload = uploads[key];
-                      const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
+                      const isReadOnly = !!checklist.error; // Prevent actions if there's an error
+                      /* const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester); */
                       
                       const isRejected = subject.rejected_types?.includes(doc);
 
                       const isUploading = uploadingItems[key];
                       
                       return (
-                        <td key={docIdx} data-label={doc} style={isRejected ? { backgroundColor: '#fee2e2', position: 'relative', border: '1px solid #ef4444' } : {}}>
+                        <td key={docIdx} data-label={doc} style={isRejected ? { backgroundColor: '#fff5f5', position: 'relative', borderLeft: '3px solid #ef4444' } : {}}>
                           {isRejected && (
-                             <div style={{ position: 'absolute', top: 0, left: 0, right: 0, fontSize: '9px', background: '#ef4444', color: 'white', textAlign: 'center', fontWeight: 'bold', padding: '1px' }}>REJECTED</div>
+                             <div style={{ 
+                               position: 'absolute', 
+                               top: 0, 
+                               left: 0, 
+                               right: 0, 
+                               fontSize: '9px', 
+                               background: '#ef4444', 
+                               color: 'white', 
+                               textAlign: 'center', 
+                               fontWeight: '900', 
+                               padding: '2px 0',
+                               letterSpacing: '0.5px'
+                             }}>ACTION REQUIRED</div>
                           )}
                           <div className="file-cell" style={{ textAlign: 'right', justifyContent: 'flex-end', display: 'flex', paddingTop: isRejected ? '12px' : '0' }}>
                             {isUploading ? (
@@ -1346,6 +1605,9 @@ export default function FacultyDashboard() {
                                       files: allFiles,
                                       currentIndex: index,
                                       zoom: 1,
+                                      offset: { x: 0, y: 0 },
+                                      isDragging: false,
+                                      dragStart: { x: 0, y: 0 },
                                       contextKey: key
                                     });
                                   }}
@@ -1384,10 +1646,21 @@ export default function FacultyDashboard() {
         )}
 
         {/* Section 2: Other Documents */}
-        {visibleOtherDocs.length > 0 && (
-        <div className="card mb-6">
-          <div className="card-header">
-            <h2 className="card-title">Section 2: Other Documents {isSearchActive && <span className="text-gray" style={{ fontSize: '0.8em', marginLeft: '10px' }}>(Filtered)</span>}</h2>
+        {((!isSearchActive && visibleOtherDocs.length > 0) || 
+          (isSearchActive && visibleOtherDocs.length > 0)) && (
+        <div className="card mb-8" style={{ border: 'none', boxShadow: '0 4px 20px -5px rgba(0,0,0,0.08)', borderRadius: '24px', overflow: 'hidden' }}>
+          <div style={{ 
+            padding: '24px 32px', 
+            background: 'linear-gradient(to right, #f8fafc, #ffffff)', 
+            borderBottom: '1px solid var(--gray-100)',
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center'
+          }}>
+            <h2 className="card-title" style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ background: 'var(--brand-green-pale)', width: '36px', height: '36px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem' }}>📄</span>
+              Section 2: Other Documents {isSearchActive && <span className="text-gray" style={{ fontSize: '0.75em', fontWeight: '500' }}>(Filtered)</span>}
+            </h2>
           </div>
           <div className="table-responsive">
             <table className="table">
@@ -1403,7 +1676,8 @@ export default function FacultyDashboard() {
                   const key = item.name;
                   const hasUpload = uploads[key];
                   
-                  const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester);
+                  const isReadOnly = !!checklist.error; // Prevent actions if there's an error
+                  /* const isReadOnly = selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester); */
                   
                   const isRejected = item.rejected;
                   
@@ -1445,6 +1719,9 @@ export default function FacultyDashboard() {
                                     files: allFiles,
                                     currentIndex: index,
                                     zoom: 1,
+                                    offset: { x: 0, y: 0 },
+                                    isDragging: false,
+                                    dragStart: { x: 0, y: 0 },
                                     contextKey: key
                                   });
                                 }}
@@ -1475,7 +1752,7 @@ export default function FacultyDashboard() {
             <div style={{ fontSize: '3rem', marginBottom: 'var(--space-4)' }}>🔍</div>
             <h2 style={{ color: 'var(--gray-600)', marginBottom: 'var(--space-2)' }}>No Results Found</h2>
             <p className="text-gray mb-6">
-              We couldn't find any documents or subjects matching "{searchQuery}".
+              We couldn't find any documents or subjects matching "{internalSearch}".
             </p>
             <button className="btn btn-primary btn-lg" onClick={() => setInternalSearch('')}>
               Show All Documents
@@ -1483,90 +1760,218 @@ export default function FacultyDashboard() {
           </div>
         )}
 
-        {/* Progress & Submission */}
-        <div className="completion-progress">
-          <div className="progress-header">
-            <h3>Overall Progress</h3>
-            <div className="progress-percentage">{progress.total}%</div>
-          </div>
-          
-          <div className="progress">
-            <div 
-              className="progress-bar"
-              style={{ width: `${progress.total}%` }}
-            ></div>
-          </div>
+        {/* Premium Completion Card */}
+        <div style={{ 
+          background: 'linear-gradient(135deg, var(--brand-blue-dark) 0%, var(--brand-blue) 100%)', 
+          borderRadius: '32px', 
+          padding: '40px', 
+          color: 'white',
+          boxShadow: '0 20px 40px -10px rgba(26, 67, 128, 0.3)',
+          marginBottom: '64px',
+          position: 'relative',
+          overflow: 'hidden'
+        }}>
+          {/* Decorative Elements */}
+          <div style={{ position: 'absolute', top: '-100px', right: '-100px', width: '300px', height: '300px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }}></div>
+          <div style={{ position: 'absolute', bottom: '-50px', left: '-50px', width: '200px', height: '200px', background: 'rgba(255,255,255,0.03)', borderRadius: '50%' }}></div>
 
-          <div className="progress-details" style={{ paddingBottom: 'var(--space-4)' }}>
-            <div className="progress-item">
-              <span>Section 1: Documents by Subject:</span>
-              <strong>{progress.bySubject}%</strong>
-            </div>
-            <div className="progress-item">
-              <span>Section 2: Other Documents:</span>
-              <strong>{progress.other}%</strong>
-            </div>
-          </div>
-
-            <div style={{ marginTop: 'var(--space-6)', textAlign: 'center' }}>
-              <button 
-                className="btn btn-primary btn-lg"
-                onClick={() => setShowSubmitModal(true)}
-                disabled={checklist.status === 'pending' || checklist.status === 'approved'}
-              >
-                {checklist.status === 'approved' ? 'Already Approved' : checklist.status === 'pending' ? 'Submission Pending' : 'Submit for Review'}
-              </button>
-              <p style={{ 
-                marginTop: 'var(--space-4)', 
-                fontSize: 'var(--text-sm)', 
-                color: 'var(--gray-600)' 
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '40px', alignItems: 'center', position: 'relative', zIndex: 1 }}>
+            <div style={{ flex: '0 0 auto', textAlign: 'center' }}>
+              <div style={{ 
+                width: '120px', 
+                height: '120px', 
+                borderRadius: '50%', 
+                border: '8px solid rgba(255,255,255,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                position: 'relative'
               }}>
-                You can continue to update your submission until allowed by your Chair.
-              </p>
+                <svg width="120" height="120" style={{ position: 'absolute', transform: 'rotate(-90deg)' }}>
+                  <circle 
+                    cx="60" cy="60" r="50" 
+                    fill="transparent" 
+                    stroke="rgba(255,255,255,0.8)" 
+                    strokeWidth="8" 
+                    strokeDasharray={`${(progress.total / 100) * 314} 314`}
+                    strokeLinecap="round"
+                    style={{ transition: 'stroke-dasharray 1s ease-out' }}
+                  />
+                </svg>
+                <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{progress.total}%</div>
+              </div>
+              <p style={{ marginTop: '12px', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', opacity: 0.8 }}>Completion</p>
             </div>
 
-          {checklist.status === 'approved' && (
-            <div className="alert alert-success" style={{ marginTop: 'var(--space-6)' }}>
-              ✅ Your checklist has been approved by the Chair. However, you can still update or re-submit documents if requested or necessary.
+            <div style={{ flex: '1 1 300px' }}>
+              <h3 style={{ color: 'white', fontSize: '1.8rem', marginBottom: '12px' }}>Finalize Your Submission</h3>
+              <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.95rem', maxWidth: '500px', marginBottom: '24px', lineHeight: '1.6' }}>
+                Once all documents are uploaded, please submit your checklist for review. Your Chair will be notified immediately of your progress.
+              </p>
+              
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                <button 
+                  className="btn btn-primary"
+                  style={{ 
+                    background: progress.total === 100 ? 'var(--brand-green)' : '#ffffff', 
+                    color: progress.total === 100 ? '#ffffff' : 'var(--brand-blue-dark)',
+                    padding: '16px 32px',
+                    borderRadius: '16px',
+                    fontSize: '1rem',
+                    fontWeight: '800',
+                    border: 'none',
+                    boxShadow: '0 10px 20px -5px rgba(0,0,0,0.2)'
+                  }}
+                  onClick={() => setShowSubmitModal(true)}
+                  disabled={checklist.status === 'pending' || checklist.status === 'approved'}
+                >
+                  {checklist.status === 'approved' ? '✓ Checklist Approved' : checklist.status === 'pending' ? '⏳ Submission Pending' : 'Submit Review Now'}
+                </button>
+
+                {checklist.status === 'approved' && (
+                  <div style={{ padding: '12px 20px', background: 'rgba(0,0,0,0.2)', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.2rem' }}>✅</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: '700' }}>Chair has approved your term requirements.</span>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       </>)}
 
-        {/* Submit Progress Modal */}
+        {/* Redesigned Submit Progress Modal */}
         {showSubmitModal && (
-          <div className="modal-backdrop">
-            <div className="modal" style={{ maxWidth: '600px' }}>
-              <div className="modal-header">
-                <h3 className="modal-title">Final Submission Checklist</h3>
+          <div 
+            className="modal-backdrop" 
+            style={{ 
+              zIndex: 1300, 
+              backgroundColor: 'rgba(0, 0, 0, 0.65)', 
+              backdropFilter: 'blur(10px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '20px'
+            }}
+          >
+            <div 
+              className="modal-content" 
+              style={{ 
+                maxWidth: '650px', 
+                width: '100%', 
+                borderRadius: '32px', 
+                background: '#ffffff', 
+                boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)',
+                overflow: 'hidden',
+                animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}
+            >
+              <div style={{ 
+                padding: '32px', 
+                background: 'linear-gradient(to right, var(--brand-blue-pale), #ffffff)', 
+                borderBottom: '1px solid var(--gray-100)' 
+              }}>
+                <h3 style={{ margin: 0, fontSize: '1.6rem', fontWeight: '900', color: 'var(--brand-blue-dark)', letterSpacing: '-0.03em' }}>
+                  Final Review Summary
+                </h3>
+                <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                   <div style={{ px: '12px', py: '4px', background: 'var(--brand-blue)', color: 'white', borderRadius: '30px', fontSize: '0.75rem', fontWeight: '800', padding: '4px 12px' }}>
+                    {progress.total}% COMPLETE
+                   </div>
+                   <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)', fontWeight: '500' }}>Checked on {new Date().toLocaleDateString()}</span>
+                </div>
               </div>
-              <div className="modal-body">
+
+              <div style={{ padding: '32px' }}>
                 {progress.total === 100 ? (
-                  <div className="alert alert-success">
-                    ✨ Perfect! All documents have been uploaded.
+                  <div style={{ 
+                    background: '#f0fdf4', 
+                    borderRadius: '20px', 
+                    padding: '24px', 
+                    border: '1px solid #bbf7d0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '20px'
+                  }}>
+                    <div style={{ fontSize: '2.5rem' }}>✨</div>
+                    <div>
+                      <h4 style={{ margin: 0, color: '#166534', fontWeight: '800' }}>Everything Looks Perfect!</h4>
+                      <p style={{ margin: '4px 0 0', color: '#15803d', fontSize: '0.9rem' }}>All required documents have been uploaded and verified.</p>
+                    </div>
                   </div>
                 ) : (
-                  <div className="mb-4">
-                    <p className="mb-4">You have completed <strong>{progress.total}%</strong> of your requirements. Here's what's currently missing:</p>
+                  <div>
+                    <div style={{ 
+                      background: '#fffbeb', 
+                      borderRadius: '16px', 
+                      padding: '16px 20px', 
+                      marginBottom: '24px',
+                      borderLeft: '4px solid var(--nvsu-yellow-dark)'
+                    }}>
+                       <p style={{ margin: 0, fontSize: '0.95rem', color: '#92400e', fontWeight: '600' }}>
+                         You still have {100 - progress.total}% to complete.
+                       </p>
+                    </div>
+
+                    <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--gray-500)', marginBottom: '16px', fontWeight: '800' }}>Missing Documents:</h4>
                     
-                    <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-4)' }}>
+                    <div style={{ maxHeight: '350px', overflowY: 'auto', borderRadius: '20px', border: '1px solid var(--gray-100)', padding: '16px', background: '#fcfcfc' }}>
                       {getMissingDocuments().subjects.map((sub, i) => (
-                        <div key={i} className="mb-3">
-                          <strong style={{ color: 'var(--nvsu-green)', fontSize: '11px', textTransform: 'uppercase' }}>{sub.name}</strong>
-                          <ul className="text-sm text-gray" style={{ listStyle: 'none', paddingLeft: 0, marginTop: '2px' }}>
+                        <div key={i} style={{ 
+                          marginBottom: '20px', 
+                          background: '#ffffff', 
+                          padding: '16px', 
+                          borderRadius: '16px',
+                          border: '1px solid var(--gray-100)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '1rem' }}>📚</span>
+                            <strong style={{ color: 'var(--brand-blue-dark)', fontSize: '0.9rem' }}>{sub.name}</strong>
+                          </div>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                             {sub.docs.map((d, di) => (
-                              <li key={di}>• {d}</li>
+                              <li key={di} style={{ 
+                                background: '#fef2f2', 
+                                color: '#b91c1c', 
+                                padding: '4px 10px', 
+                                borderRadius: '8px', 
+                                fontSize: '0.75rem', 
+                                fontWeight: '700',
+                                border: '1px solid #fee2e2'
+                              }}>
+                                ✕ {d}
+                              </li>
                             ))}
                           </ul>
                         </div>
                       ))}
                       
                       {getMissingDocuments().other.length > 0 && (
-                        <div>
-                          <strong style={{ color: 'var(--nvsu-green)', fontSize: '11px', textTransform: 'uppercase' }}>Other Documents</strong>
-                          <ul className="text-sm text-gray" style={{ listStyle: 'none', paddingLeft: 0, marginTop: '2px' }}>
+                        <div style={{ 
+                          background: '#ffffff', 
+                          padding: '16px', 
+                          borderRadius: '16px',
+                          border: '1px solid var(--gray-100)',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '1rem' }}>📄</span>
+                            <strong style={{ color: 'var(--brand-blue-dark)', fontSize: '0.9rem' }}>Other Documents</strong>
+                          </div>
+                          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                             {getMissingDocuments().other.map((d, di) => (
-                              <li key={di}>• {d}</li>
+                              <li key={di} style={{ 
+                                background: '#fef2f2', 
+                                color: '#b91c1c', 
+                                padding: '4px 10px', 
+                                borderRadius: '8px', 
+                                fontSize: '0.75rem', 
+                                fontWeight: '700',
+                                border: '1px solid #fee2e2'
+                              }}>
+                                ✕ {d}
+                              </li>
                             ))}
                           </ul>
                         </div>
@@ -1574,24 +1979,37 @@ export default function FacultyDashboard() {
                     </div>
                   </div>
                 )}
-                <p className="text-sm mt-4">
-                  By clicking confirm, you are notifying the Chairperson that your checklist is ready for verification.
+                
+                <p style={{ marginTop: '24px', fontSize: '0.85rem', color: 'var(--gray-500)', textAlign: 'center', fontWeight: '500', lineHeight: '1.5' }}>
+                  By confirming, your Chairperson will be notified to begin the verification process. 
+                  You can still update files unless your account is locked by the admin.
                 </p>
               </div>
-              <div className="modal-footer">
+
+              <div style={{ padding: '24px 32px 32px', display: 'flex', gap: '16px', background: '#f8fafc' }}>
                 <button 
                   className="btn btn-secondary" 
+                  style={{ flex: 1, padding: '14px', borderRadius: '14px', fontWeight: '700' }}
                   onClick={() => setShowSubmitModal(false)}
                   disabled={submitting}
                 >
-                  Cancel
+                  Go Back
                 </button>
                 <button 
                   className="btn btn-primary" 
+                  style={{ 
+                    flex: 2, 
+                    padding: '14px', 
+                    borderRadius: '14px', 
+                    fontWeight: '800', 
+                    fontSize: '1rem',
+                    background: 'var(--brand-blue)',
+                    boxShadow: '0 10px 20px -5px rgba(26, 67, 128, 0.3)'
+                  }}
                   onClick={handleSubmit}
                   disabled={submitting}
                 >
-                  {submitting ? 'Submitting...' : 'Confirm Submission'}
+                  {submitting ? 'Processing...' : 'Confirm Submission'}
                 </button>
               </div>
             </div>
@@ -1599,62 +2017,124 @@ export default function FacultyDashboard() {
         )}
         </>)}
       </main>
-      {/* Image Preview Modal */}
+      {/* Enhanced Image Preview Modal with Panning and Zoom */}
       {previewState.isOpen && (
-        <div className="modal-overlay" style={{ zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.9)', position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false }))}>
+        <div 
+          className="modal-overlay" 
+          style={{ 
+            zIndex: 9999, 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            backgroundColor: 'rgba(0,0,0,0.95)', 
+            position: 'fixed', 
+            top: 0, left: 0, right: 0, bottom: 0,
+            overflow: 'hidden',
+            touchAction: 'none'
+          }} 
+          onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false }))}
+          onMouseMove={(e) => {
+            if (!previewState.isDragging) return;
+            const dx = e.clientX - previewState.dragStart.x;
+            const dy = e.clientY - previewState.dragStart.y;
+            setPreviewState(prev => ({
+              ...prev,
+              offset: { x: prev.offset.x + dx, y: prev.offset.y + dy },
+              dragStart: { x: e.clientX, y: e.clientY }
+            }));
+          }}
+          onMouseUp={() => setPreviewState(prev => ({ ...prev, isDragging: false }))}
+          onMouseLeave={() => setPreviewState(prev => ({ ...prev, isDragging: false }))}
+          onTouchMove={(e) => {
+            if (!previewState.isDragging || e.touches.length !== 1) return;
+            const touch = e.touches[0];
+            const dx = touch.clientX - previewState.dragStart.x;
+            const dy = touch.clientY - previewState.dragStart.y;
+            setPreviewState(prev => ({
+              ...prev,
+              offset: { x: prev.offset.x + dx, y: prev.offset.y + dy },
+              dragStart: { x: touch.clientX, y: touch.clientY }
+            }));
+          }}
+          onTouchEnd={() => setPreviewState(prev => ({ ...prev, isDragging: false }))}
+        >
           <div className="modal-content" style={{ width: '100%', height: '100%', background: 'transparent', boxShadow: 'none', padding: 0, position: 'relative' }} onClick={e => e.stopPropagation()}>
              
-             {/* Toolbar */}
-             <div style={{ position: 'absolute', top: '20px', right: '20px', display: 'flex', gap: '10px', zIndex: 10 }}>
-               <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.min(prev.zoom + 0.5, 3) }))}>➕ Zoom In</button>
-               <button className="btn btn-sm" style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.4)', backdropFilter: 'blur(4px)' }} onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.max(prev.zoom - 0.5, 0.5) }))}>➖ Zoom Out</button>
-               
-               {/* Remove Button - Editable if LIVE or Future/Current Term */}
-               {(selectedTerm === 'LIVE' || (checklist.term_id >= `${settings.academicYear}-${settings.semester}`)) && (
-                  <button 
-                    className="btn btn-sm" 
-                    style={{ background: 'rgba(220, 38, 38, 0.9)', color: 'white', border: 'none', marginLeft: '10px' }}
-                    onClick={async () => {
-                       const confirmed = await confirm('Are you sure you want to remove this file?', 'Remove Document');
-                       if (confirmed) {
-                          const currentFiles = previewState.files;
-                          const currentIndex = previewState.currentIndex;
-                          const contextKey = previewState.contextKey;
+             {/* Standard Professional Toolbar */}
+             <div style={{ 
+               position: 'absolute', 
+               top: '20px', 
+               right: '20px', 
+               display: 'flex', 
+               gap: '8px', 
+               zIndex: 100,
+               background: 'rgba(0,0,0,0.5)',
+               padding: '10px',
+               borderRadius: '8px'
+             }}>
+               <button 
+                 className="btn btn-sm" 
+                 style={{ background: '#3b82f6', color: 'white', border: 'none' }} 
+                 onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.min(prev.zoom + 0.3, 5) }))}
+               >
+                 Zoom In
+               </button>
+               <button 
+                 className="btn btn-sm" 
+                 style={{ background: '#3b82f6', color: 'white', border: 'none' }} 
+                 onClick={() => setPreviewState(prev => ({ ...prev, zoom: Math.max(prev.zoom - 0.3, 0.5), offset: prev.zoom <= 0.8 ? {x:0, y:0} : prev.offset }))}
+               >
+                 Zoom Out
+               </button>
 
-                          removeUpload(contextKey, currentIndex);
+               <button 
+                 className="btn btn-sm" 
+                 style={{ background: '#ef4444', color: 'white', border: 'none', fontWeight: 'bold' }} 
+                 onClick={async () => {
+                   const confirmed = await confirm('Are you sure you want to remove this file?', 'Remove Document');
+                   if (confirmed) {
+                     const currentFiles = previewState.files;
+                     const currentIndex = previewState.currentIndex;
+                     const contextKey = previewState.contextKey;
+                     removeUpload(contextKey, currentIndex);
+                     const newFiles = currentFiles.filter((_, idx) => idx !== currentIndex);
+                     if (newFiles.length === 0) {
+                        setPreviewState(prev => ({ ...prev, isOpen: false }));
+                     } else {
+                        const nextIndex = currentIndex < newFiles.length ? currentIndex : newFiles.length - 1;
+                        setPreviewState(prev => ({
+                           ...prev,
+                           files: newFiles,
+                           currentIndex: nextIndex,
+                           imageSrc: newFiles[nextIndex].preview,
+                           zoom: 1,
+                           offset: {x:0, y:0}
+                        }));
+                     }
+                   }
+                 }}
+               >
+                 REMOVE
+               </button>
 
-                          const newFiles = currentFiles.filter((_, idx) => idx !== currentIndex);
-                          if (newFiles.length === 0) {
-                             setPreviewState(prev => ({ ...prev, isOpen: false }));
-                          } else {
-                             const nextIndex = currentIndex < newFiles.length ? currentIndex : newFiles.length - 1;
-                             setPreviewState(prev => ({
-                                ...prev,
-                                files: newFiles,
-                                currentIndex: nextIndex,
-                                imageSrc: newFiles[nextIndex].preview,
-                                zoom: 1
-                             }));
-                          }
-                       }
-                    }}
-                  >
-                    🗑️ Remove
-                  </button>
-               )}
-
-               <button className="btn btn-sm" style={{ background: 'rgba(75, 85, 99, 0.9)', color: 'white', border: 'none' }} onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false, zoom: 1 }))}>❌ Close</button>
+               <button 
+                 className="btn btn-sm" 
+                 style={{ background: '#6b7280', color: 'white', border: 'none' }} 
+                 onClick={() => setPreviewState(prev => ({ ...prev, isOpen: false, zoom: 1, offset: {x:0, y:0} }))}
+               >
+                 CLOSE
+               </button>
              </div>
 
              {/* Navigation - Left */}
              {previewState.files.length > 1 && (
                <button 
-                 style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer', padding: '20px', borderRadius: '10px', backdropFilter: 'blur(2px)', zIndex: 5 }}
+                 style={{ position: 'absolute', left: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontSize: '2.5rem', cursor: 'pointer', padding: '15px 25px', borderRadius: '50%', backdropFilter: 'blur(5px)', zIndex: 5, transition: 'all 0.3s ease' }}
                  onClick={(e) => {
                    e.stopPropagation();
                    setPreviewState(prev => {
                      const newIndex = (prev.currentIndex - 1 + prev.files.length) % prev.files.length;
-                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1 };
+                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1, offset: {x:0, y:0} };
                    });
                  }}
                >
@@ -1662,26 +2142,50 @@ export default function FacultyDashboard() {
                </button>
              )}
 
-             {/* Main Image Container */}
-             <div style={{ overflow: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%' }}>
+             {/* Viewport & Image */}
+             <div 
+               style={{ 
+                 width: '100%', 
+                 height: '100%', 
+                 display: 'flex', 
+                 justifyContent: 'center', 
+                 alignItems: 'center',
+                 cursor: previewState.isDragging ? 'grabbing' : (previewState.zoom > 1 ? 'grab' : 'default'),
+                 userSelect: 'none'
+               }}
+               onMouseDown={(e) => {
+                 setPreviewState(prev => ({
+                   ...prev,
+                   isDragging: true,
+                   dragStart: { x: e.clientX, y: e.clientY }
+                 }));
+               }}
+               onTouchStart={(e) => {
+                 if (e.touches.length !== 1) return;
+                 const touch = e.touches[0];
+                 setPreviewState(prev => ({
+                   ...prev,
+                   isDragging: true,
+                   dragStart: { x: touch.clientX, y: touch.clientY }
+                 }));
+               }}
+             >
                <div style={{ 
-                 transform: `scale(${previewState.zoom})`, 
-                 transition: 'transform 0.2s ease',
-                 display: 'flex',
-                 justifyContent: 'center',
-                 alignItems: 'center'
+                 transform: `translate(${previewState.offset.x}px, ${previewState.offset.y}px) scale(${previewState.zoom})`, 
+                 transition: previewState.isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)',
+                 willChange: 'transform'
                }}>
                  <img 
                    src={previewState.imageSrc} 
                    style={{ 
-                     maxHeight: '90vh', 
-                     maxWidth: '90vw', 
+                     maxHeight: '85vh', 
+                     maxWidth: '85vw', 
                      objectFit: 'contain',
-                     boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
-                     borderRadius: '4px'
+                     boxShadow: '0 30px 60px rgba(0,0,0,0.8)',
+                     borderRadius: '8px',
+                     pointerEvents: 'none'
                    }} 
-                   alt="Preview" 
-                   draggable={false}
+                   alt="Preview Document" 
                  />
                </div>
              </div>
@@ -1689,12 +2193,12 @@ export default function FacultyDashboard() {
              {/* Navigation - Right */}
              {previewState.files.length > 1 && (
                <button 
-                 style={{ position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '3rem', cursor: 'pointer', padding: '20px', borderRadius: '10px', backdropFilter: 'blur(2px)', zIndex: 5 }}
+                 style={{ position: 'absolute', right: '20px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontSize: '2.5rem', cursor: 'pointer', padding: '15px 25px', borderRadius: '50%', backdropFilter: 'blur(5px)', zIndex: 5, transition: 'all 0.3s ease' }}
                  onClick={(e) => {
                    e.stopPropagation();
                    setPreviewState(prev => {
                      const newIndex = (prev.currentIndex + 1) % prev.files.length;
-                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1 };
+                     return { ...prev, currentIndex: newIndex, imageSrc: prev.files[newIndex].preview, zoom: 1, offset: {x:0, y:0} };
                    });
                  }}
                >
@@ -1702,87 +2206,181 @@ export default function FacultyDashboard() {
                </button>
              )}
 
-             {/* Caption */}
-             <div style={{ position: 'absolute', bottom: '30px', left: '50%', transform: 'translateX(-50%)', color: 'white', background: 'rgba(0,0,0,0.7)', padding: '10px 25px', borderRadius: '30px', textAlign: 'center', backdropFilter: 'blur(5px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-               <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>{previewState.files[previewState.currentIndex]?.name}</div>
-               <div style={{ fontSize: '0.8em', opacity: 0.8 }}>Image {previewState.currentIndex + 1} of {previewState.files.length}</div>
-             </div>
-
           </div>
         </div>
       )}
-      {/* Subject Manager Modal */}
+      {/* Redesigned Subject Manager Modal */}
       {showSubjectManager && (
-        <div className="modal-backdrop" style={{ zIndex: 1100 }}>
-          <div className="modal" style={{ maxWidth: '700px', width: '90%' }}>
-            <div className="modal-header">
-              <h3 className="modal-title">Manage Subjects</h3>
-              <button onClick={() => setShowSubjectManager(false)} style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer' }}>×</button>
+        <div 
+          className="modal-backdrop" 
+          style={{ 
+            zIndex: 1100,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'var(--space-4)',
+            animation: 'fadeIn 0.3s ease-out'
+          }}
+          onClick={() => setShowSubjectManager(false)}
+        >
+          <div 
+            className="modal-content" 
+            style={{ 
+              maxWidth: '750px', 
+              width: '100%', 
+              borderRadius: '24px', 
+              background: '#ffffff',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              overflow: 'hidden',
+              animation: 'slideUp 0.3s ease-out'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ 
+              padding: '24px 32px', 
+              background: 'linear-gradient(to right, var(--brand-blue-pale), #ffffff)', 
+              borderBottom: '1px solid var(--gray-100)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', color: 'var(--brand-blue-dark)', letterSpacing: '-0.02em' }}>
+                  Manage Your Subjects
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: 'var(--gray-500)' }}>
+                  Enter the subjects you are teaching this term.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowSubjectManager(false)} 
+                style={{ 
+                  background: 'white', 
+                  border: '1px solid var(--gray-200)', 
+                  width: '36px', 
+                  height: '36px', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  cursor: 'pointer', 
+                  color: 'var(--gray-600)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={e => { e.currentTarget.style.background = 'var(--gray-50)'; e.currentTarget.style.color = 'var(--nvsu-red)'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = 'var(--gray-600)'; }}
+              >✕</button>
             </div>
-            <div className="modal-body">
+
+            <div className="modal-body" style={{ padding: '32px' }}>
               {/* Add New Subject Form */}
-              <div style={{ background: 'var(--gray-50)', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid var(--gray-200)' }}>
-                  <h4 style={{ fontSize: '12px', marginBottom: '10px', textTransform: 'uppercase', color: 'var(--gray-600)', fontWeight: 'bold' }}>Add New Subject</h4>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Subject Code (e.g. IT 101)" 
-                      value={subjectForm.code}
-                      onChange={e => setSubjectForm(prev => ({ ...prev, code: e.target.value }))}
-                      style={{ flex: 1, minWidth: '120px', backgroundColor: '#ffffff' }}
-                    />
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Descriptive Title" 
-                      value={subjectForm.name}
-                      onChange={e => setSubjectForm(prev => ({ ...prev, name: e.target.value }))}
-                      style={{ flex: 2, minWidth: '200px', backgroundColor: '#ffffff' }}
-                    />
-                    <button className="btn btn-primary" onClick={handleAddSubject}>Add Subject</button>
+              <div style={{ 
+                background: '#f8fafc', 
+                padding: '24px', 
+                borderRadius: '16px', 
+                marginBottom: '32px', 
+                border: '1.5px dashed var(--gray-300)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '16px'
+              }}>
+                  <h4 style={{ fontSize: '0.75rem', margin: 0, textTransform: 'uppercase', color: 'var(--brand-blue)', fontWeight: '800', letterSpacing: '1px' }}>
+                    Quick Add New Subject
+                  </h4>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '140px' }}>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Subject Code" 
+                        value={subjectForm.code}
+                        onChange={e => setSubjectForm(prev => ({ ...prev, code: e.target.value }))}
+                        style={{ width: '100%', padding: '12px 16px', borderRadius: '12px' }}
+                      />
+                    </div>
+                    <div style={{ flex: 2, minWidth: '220px' }}>
+                      <input 
+                        type="text" 
+                        className="form-input" 
+                        placeholder="Subject Description / Title" 
+                        value={subjectForm.name}
+                        onChange={e => setSubjectForm(prev => ({ ...prev, name: e.target.value }))}
+                        style={{ width: '100%', padding: '12px 16px', borderRadius: '12px' }}
+                      />
+                    </div>
+                    <button 
+                      className="btn btn-primary" 
+                      onClick={handleAddSubject}
+                      style={{ padding: '0 24px', borderRadius: '12px', height: '48px' }}
+                    >
+                      <span>Add Class</span>
+                    </button>
                   </div>
-                  {subjectError && <p style={{ color: '#ef4444', fontSize: '12px', marginTop: '5px', display: 'flex', alignItems: 'center', gap: '4px' }}>⚠️ {subjectError}</p>}
+                  {subjectError && <p style={{ color: '#ef4444', fontSize: '13px', margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>⚠️ {subjectError}</p>}
               </div>
 
               {/* List of Existing Subjects */}
-              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                  <table className="table" style={{ fontSize: '14px' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: '120px' }}>Code</th>
-                        <th>Title</th>
-                        <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
+              <div style={{ maxHeight: '350px', overflowY: 'auto', borderRadius: '16px', border: '1px solid var(--gray-100)' }}>
+                  <table className="table" style={{ fontSize: '14px', margin: 0 }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                      <tr style={{ background: '#f1f5f9' }}>
+                        <th style={{ padding: '16px', color: 'var(--gray-600)', background: '#f1f5f9' }}>Subject Code</th>
+                        <th style={{ padding: '16px', color: 'var(--gray-600)', background: '#f1f5f9' }}>Description</th>
+                        <th style={{ width: '60px', textAlign: 'center', padding: '16px', color: 'var(--gray-600)', background: '#f1f5f9' }}>Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {checklist.subjects.map(sub => (
-                        <tr key={sub.id}>
-                          <td style={{ padding: '8px' }}>
+                      {checklist.subjects.map((sub, idx) => (
+                        <tr key={sub.id} style={{ borderBottom: '1px solid var(--gray-50)' }}>
+                          <td style={{ padding: '12px 16px' }}>
                               <input 
                                 defaultValue={sub.code} 
                                 onBlur={(e) => {
                                   if (e.target.value !== sub.code) handleUpdateSubject(sub.id, sub.name, e.target.value);
                                 }}
                                 className="form-input"
-                                style={{ padding: '4px 8px', width: '100%', backgroundColor: '#ffffff' }}
+                                style={{ padding: '8px 12px', width: '100%', backgroundColor: 'transparent', border: '1px solid transparent' }}
+                                onFocus={e => e.target.style.borderColor = 'var(--brand-blue-pale)'}
+                                onMouseOver={e => e.target.style.backgroundColor = '#f8fafc'}
+                                onMouseOut={e => e.target.style.backgroundColor = 'transparent'}
                               />
                           </td>
-                          <td style={{ padding: '8px' }}>
+                          <td style={{ padding: '12px 16px' }}>
                               <input 
                                 defaultValue={sub.name} 
                                 onBlur={(e) => {
                                   if (e.target.value !== sub.name) handleUpdateSubject(sub.id, e.target.value, sub.code);
                                 }}
                                 className="form-input"
-                                style={{ padding: '4px 8px', width: '100%', backgroundColor: '#ffffff' }}
+                                style={{ padding: '8px 12px', width: '100%', backgroundColor: 'transparent', border: '1px solid transparent' }}
+                                onFocus={e => e.target.style.borderColor = 'var(--brand-blue-pale)'}
+                                onMouseOver={e => e.target.style.backgroundColor = '#f8fafc'}
+                                onMouseOut={e => e.target.style.backgroundColor = 'transparent'}
                               />
                           </td>
-                          <td style={{ textAlign: 'center', padding: '8px' }}>
+                          <td style={{ textAlign: 'center', padding: '12px' }}>
                               <button 
-                                className="btn btn-sm"
-                                style={{ color: 'white', background: '#ef4444', border: 'none', width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px' }} 
+                                className="btn btn-sm destructive"
+                                style={{ 
+                                  color: '#ef4444', 
+                                  background: '#fee2e2', 
+                                  border: 'none', 
+                                  width: '36px', 
+                                  height: '36px', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center', 
+                                  borderRadius: '10px',
+                                  transition: 'all 0.2s'
+                                }} 
                                 onClick={() => handleDeleteSubject(sub.id)}
+                                onMouseOver={e => { e.currentTarget.style.background = '#ef4444'; e.currentTarget.style.color = 'white'; }}
+                                onMouseOut={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
                                 title="Delete Subject"
                               >
                                 ✕
@@ -1791,36 +2389,132 @@ export default function FacultyDashboard() {
                         </tr>
                       ))}
                       {checklist.subjects.length === 0 && (
-                          <tr><td colSpan="3" style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '20px' }}>No subjects added yet. Add one above!</td></tr>
+                          <tr>
+                            <td colSpan="3" style={{ textAlign: 'center', color: 'var(--gray-500)', padding: '60px 20px', background: '#ffffff' }}>
+                              <div style={{ fontSize: '3rem', marginBottom: '16px', opacity: 0.3 }}>📚</div>
+                              <p style={{ margin: 0, fontWeight: '600' }}>No subjects added yet.</p>
+                              <p style={{ margin: '4px 0 0', fontSize: '0.8rem', opacity: 0.7 }}>Add your first class using the form above!</p>
+                            </td>
+                          </tr>
                       )}
                     </tbody>
                   </table>
               </div>
             </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setShowSubjectManager(false)}>Done</button>
+
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--gray-100)', padding: '24px 32px' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => setShowSubjectManager(false)}
+                style={{ marginLeft: 'auto', padding: '12px 32px', borderRadius: '12px', fontWeight: '800' }}
+              >
+                Finished
+              </button>
             </div>
           </div>
         </div>
       )}
-      {/* Media Capture Choice Modal */}
+      {/* Redesigned Media Capture Choice Modal */}
       {mediaCapture.isOpen && (
-        <div className="modal-backdrop" style={{ zIndex: 1200 }}>
-          <div className="modal" style={{ maxWidth: '400px', width: '95%', borderRadius: 'var(--radius-xl)' }}>
-            <div className="modal-header" style={{ borderBottom: '1px solid var(--gray-100)', padding: 'var(--space-6) var(--space-6) var(--space-4)' }}>
+        <div 
+          className="modal-backdrop" 
+          style={{ 
+            zIndex: 1200, 
+            backgroundColor: 'rgba(0, 0, 0, 0.6)', 
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 'var(--space-4)',
+            animation: 'fadeIn 0.3s ease-out'
+          }}
+          onClick={() => setMediaCapture({ isOpen: false, key: null, docName: null })}
+        >
+          <div 
+            className="modal-content" 
+            style={{ 
+              maxWidth: '450px', 
+              width: '100%', 
+              borderRadius: '24px', 
+              overflow: 'hidden',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              background: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              animation: 'slideUp 0.3s ease-out'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div style={{ 
+              padding: '24px 24px 16px', 
+              background: 'linear-gradient(to right, var(--brand-blue-pale), #ffffff)', 
+              borderBottom: '1px solid var(--gray-100)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start'
+            }}>
               <div>
-                <h3 className="modal-title" style={{ fontSize: '1.2rem', color: 'var(--brand-blue-dark)' }}>Upload Document</h3>
-                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--gray-500)' }}>{mediaCapture.docName}</p>
+                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', color: 'var(--brand-blue-dark)', letterSpacing: '-0.02em' }}>
+                  Upload Document
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: 'var(--gray-500)', fontWeight: '500' }}>
+                  {mediaCapture.docName}
+                </p>
               </div>
               <button 
                 onClick={() => setMediaCapture({ isOpen: false, key: null, docName: null })} 
-                style={{ background: 'var(--gray-100)', border: 'none', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--gray-600)' }}
+                style={{ 
+                  background: 'white', 
+                  border: '1px solid var(--gray-200)', 
+                  width: '36px', 
+                  height: '36px', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  cursor: 'pointer', 
+                  color: 'var(--gray-600)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={e => { e.currentTarget.style.background = 'var(--gray-50)'; e.currentTarget.style.color = 'var(--nvsu-red)'; }}
+                onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = 'var(--gray-600)'; }}
               >✕</button>
             </div>
-            <div className="modal-body" style={{ padding: 'var(--space-8) var(--space-6)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
-                {/* Camera Option */}
-                <label className="camera-btn" style={{ padding: 'var(--space-6) var(--space-4)', height: '140px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', flexShrink: 0 }}>
+
+            {/* Modal Body */}
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                {/* Take Photo Option */}
+                <label 
+                  style={{ 
+                    cursor: 'pointer',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: '12px',
+                    padding: '30px 20px', 
+                    borderRadius: '20px', 
+                    background: '#ffffff',
+                    border: '2px solid var(--gray-100)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    textAlign: 'center'
+                  }}
+                  className="upload-option-card"
+                  onMouseOver={e => {
+                    e.currentTarget.style.borderColor = 'var(--brand-blue)';
+                    e.currentTarget.style.background = 'var(--brand-blue-pale)';
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(26, 67, 128, 0.1)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.borderColor = 'var(--gray-100)';
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -1833,13 +2527,54 @@ export default function FacultyDashboard() {
                     }}
                     hidden 
                   />
-                  <span style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>📸</span>
-                  <span style={{ fontWeight: '800', fontSize: 'var(--text-sm)', letterSpacing: '0.5px' }}>TAKE PHOTO</span>
-                  <span style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '4px' }}>Using Camera</span>
+                  <div style={{ 
+                    width: '64px', 
+                    height: '64px', 
+                    borderRadius: '16px', 
+                    background: 'var(--brand-blue)', 
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '2rem',
+                    boxShadow: '0 8px 16px rgba(26, 67, 128, 0.2)'
+                  }}>📸</div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Take Photo</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Camera</span>
+                  </div>
                 </label>
 
                 {/* Gallery Option */}
-                <label className="upload-btn" style={{ padding: 'var(--space-6) var(--space-4)', height: '140px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', borderStyle: 'solid', borderColor: 'var(--brand-green)', display: 'flex', flexDirection: 'column' }}>
+                <label 
+                  style={{ 
+                    cursor: 'pointer',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: '12px',
+                    padding: '30px 20px', 
+                    borderRadius: '20px', 
+                    background: '#ffffff',
+                    border: '2px solid var(--gray-100)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    textAlign: 'center'
+                  }}
+                  className="upload-option-card"
+                  onMouseOver={e => {
+                    e.currentTarget.style.borderColor = 'var(--brand-green)';
+                    e.currentTarget.style.background = '#f0fdf4';
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(0, 104, 55, 0.1)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.borderColor = 'var(--gray-100)';
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -1852,16 +2587,44 @@ export default function FacultyDashboard() {
                     }}
                     hidden 
                   />
-                  <span style={{ fontSize: '3rem', marginBottom: 'var(--space-2)' }}>🖼️</span>
-                  <span style={{ fontWeight: '800', fontSize: 'var(--text-sm)', letterSpacing: '0.5px' }}>GALLERY</span>
-                  <span style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '4px' }}>Choose Existing</span>
+                  <div style={{ 
+                    width: '64px', 
+                    height: '64px', 
+                    borderRadius: '16px', 
+                    background: 'var(--brand-green)', 
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '2rem',
+                    boxShadow: '0 8px 16px rgba(0, 104, 55, 0.2)'
+                  }}>🖼️</div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gallery</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Choose Files</span>
+                  </div>
                 </label>
               </div>
+              
+              <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.8rem', color: 'var(--gray-400)', fontWeight: '500' }}>
+                You can upload multiple files from your gallery.
+              </p>
             </div>
-            <div className="modal-footer" style={{ borderTop: 'none', padding: '0 var(--space-6) var(--space-6)' }}>
+
+            {/* Modal Footer */}
+            <div style={{ padding: '0 24px 24px' }}>
               <button 
                 className="btn btn-secondary" 
-                style={{ width: '100%', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)' }}
+                style={{ 
+                  width: '100%', 
+                  padding: '14px', 
+                  borderRadius: '14px', 
+                  fontSize: '1rem', 
+                  fontWeight: '700',
+                  background: 'var(--gray-50)',
+                  border: '1px solid var(--gray-200)',
+                  color: 'var(--gray-600)'
+                }}
                 onClick={() => setMediaCapture({ isOpen: false, key: null, docName: null })}
               >
                 Cancel

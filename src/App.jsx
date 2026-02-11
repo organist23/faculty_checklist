@@ -60,7 +60,7 @@ function AppRouter() {
           justifyContent: 'center',
           gap: '8px'
         }}>
-          <span>📡</span> You are currently offline. Some features may not work.
+          <span>📡</span> Please check your internet connection.
         </div>
       )}
       <Routes>

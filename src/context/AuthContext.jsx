@@ -59,7 +59,7 @@ export const AuthProvider = ({ children }) => {
         console.error('Auth Init Error:', err);
         // Better error message for network issues
         const errorMessage = (err.message?.includes('fetch') || !navigator.onLine)
-          ? 'Network error. Please check your internet connection and reload.'
+          ? 'Please check your internet connection.'
           : err.message || 'Authentication check failed';
           
         if (mounted) setAuthState(prev => ({ ...prev, loading: false, error: errorMessage }));
@@ -138,7 +138,7 @@ export const AuthProvider = ({ children }) => {
         user: null,
         isAuthenticated: false,
         loading: false,
-        error: 'Account not authorized. Your profile may have been deleted by Admin.'
+        error: 'Account not authorized. Please check your internet connection.'
       });
       return false; // Failed
     }
@@ -163,7 +163,7 @@ export const AuthProvider = ({ children }) => {
         const profileSuccess = await fetchProfile(data.user.id, data.user.email);
         
         if (!profileSuccess) {
-           return { success: false, error: 'Account not authorized. Your profile may have been deleted by Admin.' };
+           return { success: false, error: 'Account not authorized. Please check your internet connection.' };
         }
       } catch (profileErr) {
         console.error('Login Profile Fetch Fail:', profileErr);
