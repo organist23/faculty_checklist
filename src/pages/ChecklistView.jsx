@@ -178,6 +178,14 @@ export default function ChecklistView() {
 
       if (error) throw error;
 
+      // DEBUG: Log the raw data from database
+      console.log('ChecklistView - Fetched data:', {
+        term_id: data.term_id,
+        subjects_count: data.subjects?.length || 0,
+        subjects: data.subjects,
+        other_docs_count: data.other_docs?.length || 0
+      });
+
       // Hydrate previews for documents
       // Batched Hydration for Admin View
       // Batched Hydration for Admin View
@@ -675,7 +683,8 @@ export default function ChecklistView() {
               })
             : checklist.subjects;
 
-          if (isSearchActive && filteredSubjects.length === 0) return null;
+          // Don't hide the section - always show it so admin can see the structure
+          // if (isSearchActive && filteredSubjects.length === 0) return null;
 
           // Headers: Only hide columns if it's a document-specific search
           const activeDocIndices = isDocumentSearch ? matchingDocIndices : checklist.documentsBySubject.map((_, i) => i);
@@ -718,6 +727,13 @@ export default function ChecklistView() {
                     </tr>
                   </thead>
                   <tbody>
+                    {filteredSubjects.length === 0 && (
+                      <tr>
+                        <td colSpan={activeDocIndices.length + 1} style={{ textAlign: 'center', padding: '32px', color: 'var(--gray-500)', fontStyle: 'italic' }}>
+                          {isSearchActive ? 'No subjects match your search.' : 'No subjects added yet for this semester.'}
+                        </td>
+                      </tr>
+                    )}
                     {filteredSubjects.map((subject) => (
                       <tr key={subject.id} style={{ transition: 'background 0.2s' }}>
                         <td data-label="Subject" style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
