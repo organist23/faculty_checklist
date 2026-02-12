@@ -173,7 +173,8 @@ export default function FacultyDashboard() {
     facingMode: 'environment',
     loading: false,
     torchAvailable: false,
-    torchEnabled: false
+    torchEnabled: false,
+    isUploading: false
   });
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -249,7 +250,8 @@ export default function FacultyDashboard() {
       facingMode: 'environment',
       loading: false,
       torchAvailable: false,
-      torchEnabled: false
+      torchEnabled: false,
+      isUploading: false
     });
   };
 
@@ -273,15 +275,22 @@ export default function FacultyDashboard() {
   };
 
   const handleCameraUpload = async () => {
-    if (!cameraState.previewBlob) return;
+    if (!cameraState.previewBlob || cameraState.isUploading) return;
     
-    const file = new File([cameraState.previewBlob], `camera_capture_${Date.now()}.jpg`, {
-      type: 'image/jpeg'
-    });
+    setCameraState(prev => ({ ...prev, isUploading: true }));
+    
+    try {
+      const file = new File([cameraState.previewBlob], `camera_capture_${Date.now()}.jpg`, {
+        type: 'image/jpeg'
+      });
 
-    await handleFileUpload(mediaCapture.key, [file]);
-    stopCamera();
-    setMediaCapture({ isOpen: false, key: null, docName: null });
+      await handleFileUpload(mediaCapture.key, [file]);
+      stopCamera();
+      setMediaCapture({ isOpen: false, key: null, docName: null });
+    } catch (err) {
+      console.error('Camera Upload Error:', err);
+      setCameraState(prev => ({ ...prev, isUploading: false }));
+    }
   };
 
   const compressImage = async (file) => {
@@ -2906,23 +2915,56 @@ export default function FacultyDashboard() {
                 </div>
               </>
             ) : (
-              <>
+              <div style={{ 
+                display: 'flex', 
+                width: '100%', 
+                gap: '16px', 
+                justifyContent: 'center',
+                padding: '0 20px'
+              }}>
                 <button 
                   className="btn btn-secondary"
                   onClick={() => setCameraState(prev => ({ ...prev, previewBlob: null }))}
-                  style={{ borderRadius: '12px', padding: '12px 24px', background: '#333', color: 'white', border: 'none' }}
+                  style={{ 
+                    borderRadius: '16px', 
+                    padding: '16px', 
+                    background: 'rgba(255,255,255,0.1)', 
+                    color: 'white', 
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    fontWeight: '700',
+                    flex: 1,
+                    maxWidth: '140px'
+                  }}
                 >
                   RETAKE
                 </button>
                 
-                <button 
+                 <button 
                   className="btn btn-primary"
                   onClick={handleCameraUpload}
-                  style={{ borderRadius: '12px', padding: '12px 32px', background: 'var(--brand-blue)', fontWeight: '800' }}
+                  disabled={cameraState.isUploading}
+                  style={{ 
+                    borderRadius: '16px', 
+                    padding: '16px', 
+                    fontWeight: '800', 
+                    flex: 1,
+                    maxWidth: '180px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px'
+                  }}
                 >
-                  USE PHOTO
+                  {cameraState.isUploading ? (
+                    <>
+                      <div className="spinner-mini" style={{ width: '18px', height: '18px', border: '3px solid rgba(255,255,255,0.3)', borderTop: '3px solid white', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+                      <span style={{ fontSize: '0.85rem' }}>UPLOADING</span>
+                    </>
+                  ) : (
+                    'USE PHOTO'
+                  )}
                 </button>
-              </>
+              </div>
             )}
           </div>
         </div>
