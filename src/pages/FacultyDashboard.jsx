@@ -720,6 +720,8 @@ export default function FacultyDashboard() {
        return;
     }
     
+    console.log(`Starting upload for key: ${key}`, { fileCount: files.length });
+    
     /* ALLOW PREVIOUS SEMESTER UPLOADS
     if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
        addToast('Cannot upload documents for past semesters.', 'error');
@@ -733,7 +735,7 @@ export default function FacultyDashboard() {
     try {
       let type, itemId, docName;
 
-      // Parse Key
+      // Parse Key (e.g., "subject-ID-IDX" or "Document Name")
       if (key.startsWith('subject-')) {
          type = 'subject';
          const parts = key.split('-');
@@ -742,113 +744,103 @@ export default function FacultyDashboard() {
          docName = DEFAULT_DOCUMENTS.subjects[docIdx];
       } else {
          type = 'other';
-         itemId = key; // itemId is now the document name (e.g. "Faculty Workload")
+         itemId = key; 
          docName = key;
       }
 
       const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
       const newDocs = [];
-      for (const file of Array.from(files)) {
-        // Size validation
+      const fileArray = Array.from(files);
+
+      for (const file of fileArray) {
         if (file.size > MAX_FILE_SIZE) {
-          addToast(`File ${file.name} exceeds the 20MB limit.`, 'error');
-          continue; // Skip this file
+          addToast(`File ${file.name} exceeds 20MB limit.`, 'error');
+          continue;
         }
 
-        // Unique filename with random string to prevent collisions
-        const uniqueSuffix = Math.random().toString(36).substring(2, 15);
-        // Robust filename cleaning:
-        // 1. Get extension
-        const fileExt = file.name.split('.').pop();
-        // 2. Create clean name (timestamp + random + extension) to avoid ANY special char issues
+        const uniqueSuffix = Math.random().toString(36).substring(2, 10);
+        const fileExt = file.name.split('.').pop().toLowerCase() || 'jpg';
         const cleanName = `${Date.now()}_${uniqueSuffix}.${fileExt}`;
         const filePath = `${user.id}/${cleanName}`;
         
+        console.log(`Uploading file to Supabase: ${filePath}`);
+
         const { error: uploadError } = await supabase.storage
           .from('checklists')
           .upload(filePath, file, {
             upsert: false,
-            contentType: file.type // Ensure content type is set
+            contentType: file.type || 'image/jpeg'
           });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error('Supabase Storage Error:', uploadError);
+          throw uploadError;
+        }
 
-        const { data: signData } = await supabase.storage
+        // Get signed URL immediately for fast UI feedback
+        const { data: signData, error: signError } = await supabase.storage
           .from('checklists')
           .createSignedUrl(filePath, 3600);
+
+        if (signError) console.warn('Signed URL warning:', signError);
 
         newDocs.push({
           name: file.name,
           path: filePath,
-          size: file.size, // Store file size in bytes
+          size: file.size,
           preview: signData?.signedUrl,
           uploadedAt: new Date().toISOString(),
           type: docName 
         });
       }
 
-      // Update State IMMUTABLY
+      if (newDocs.length === 0) throw new Error('No files were processed.');
+
+      // Update State
+      let latestState = null;
       setChecklist(prev => {
-        // Deep copy the relevant arrays to avoid mutation
         const updatedSubjects = prev.subjects.map(s => {
           if (s.id === itemId && type === 'subject') {
-             // Clear rejection for this specific doc type if it was rejected
-             const newRejectedTypes = s.rejected_types 
-                 ? s.rejected_types.filter(t => t !== docName)
-                 : s.rejected_types;
-             
-             return { 
-                 ...s, 
-                 docs: [...s.docs, ...newDocs],
-                 rejected_types: newRejectedTypes 
-             };
+             const newRejectedTypes = (s.rejected_types || []).filter(t => t !== docName);
+             return { ...s, docs: [...(s.docs || []), ...newDocs], rejected_types: newRejectedTypes };
           }
           return s;
         });
         
         const updatedOther = prev.other_docs.map(o => {
           if (o.name === itemId && type === 'other') {
-             return { 
-                 ...o, 
-                 docs: [...o.docs, ...newDocs],
-                 rejected: false // Clear rejection flag
-             };
+             return { ...o, docs: [...(o.docs || []), ...newDocs], rejected: false };
           }
           return o;
         });
         
-        const newState = {
+        latestState = {
           ...prev,
           subjects: updatedSubjects,
           other_docs: updatedOther,
-          // If the status was 'revision', reset to 'pending' (or active) immediately on upload
-          // This allows the faculty to address specific rejections without needing to complete the entire checklist
           status: prev.status === 'revision' ? 'pending' : prev.status
         };
-
-        // Sync with DB
-        updateChecklistInDB(newState);
-
-        return newState;
+        return latestState;
       });
 
-      addToast('Uploaded Successful', 'success');
-    } catch (err) {
-      console.error('Upload Error:', err);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Upload failed';
-      if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (err.message?.includes('storage')) {
-        errorMessage = 'Storage error. Please try again or contact support.';
-      } else if (err.message) {
-        errorMessage = 'Upload failed: ' + err.message;
+      // Crucial: Wait for state update to settle then sync DB
+      // We use the latestState variable captured in the functional update
+      if (latestState) {
+        await updateChecklistInDB(latestState);
       }
-      
+
+      addToast('Uploaded Successful', 'success');
+      console.log('Upload workflow completed successfully.');
+    } catch (err) {
+      console.error('Final Upload Exception:', err);
+      let errorMessage = 'Upload failed';
+      if (err.message?.includes('Failed to fetch')) {
+        errorMessage = 'Network error. Please check your signal.';
+      } else {
+        errorMessage = err.message || 'Upload failed. Please try again.';
+      }
       addToast(errorMessage, 'error');
     } finally {
-      // Clear specific item uploading status
       setUploadingItems(prev => ({ ...prev, [key]: false }));
     }
   };
@@ -2509,11 +2501,19 @@ export default function FacultyDashboard() {
                     type="file" 
                     accept="image/*" 
                     capture="environment" 
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       if (e.target.files && e.target.files.length > 0) {
-                        handleFileUpload(mediaCapture.key, e.target.files);
+                        const targetFiles = e.target.files;
+                        const targetKey = mediaCapture.key;
+                        
+                        // Close modal after a tiny delay so the OS transition feels smoother
+                        setTimeout(() => setMediaCapture({ isOpen: false, key: null, docName: null }), 100);
+                        
+                        // Start upload
+                        await handleFileUpload(targetKey, targetFiles);
+                      } else {
+                        setMediaCapture({ isOpen: false, key: null, docName: null });
                       }
-                      setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
                     style={{ 
                       position: 'absolute', 
@@ -2550,11 +2550,17 @@ export default function FacultyDashboard() {
                     type="file" 
                     accept="image/*" 
                     multiple
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       if (e.target.files && e.target.files.length > 0) {
-                        handleFileUpload(mediaCapture.key, e.target.files);
+                        const targetFiles = e.target.files;
+                        const targetKey = mediaCapture.key;
+                        
+                        setTimeout(() => setMediaCapture({ isOpen: false, key: null, docName: null }), 100);
+                        
+                        await handleFileUpload(targetKey, targetFiles);
+                      } else {
+                        setMediaCapture({ isOpen: false, key: null, docName: null });
                       }
-                      setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
                     style={{ 
                       position: 'absolute', 
@@ -2563,7 +2569,7 @@ export default function FacultyDashboard() {
                       width: '100%', 
                       height: '100%', 
                       opacity: 0, 
-                      cursor: 'pointer', // Important for desktop usability feedback
+                      cursor: 'pointer',
                       zIndex: 10 
                     }} 
                   />
