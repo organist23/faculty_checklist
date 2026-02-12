@@ -267,8 +267,8 @@ export default function ChecklistView() {
         college: data.faculty_profiles.college,
         department: data.faculty_profiles.department,
         status: data.status,
-        semester: data.term_id.split('-').slice(1).join(' '),
-        academicYear: data.term_id.split('-')[0],
+        semester: data.term_id.split('-').slice(2).join(' '),  // Everything after YYYY-YYYY
+        academicYear: data.term_id.split('-').slice(0, 2).join('-'),  // YYYY-YYYY
         subjects: hydratedSubjects,
         other_docs: hydratedOther,
         uploads: uploadsMap,
