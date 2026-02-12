@@ -1519,8 +1519,8 @@ export default function FacultyDashboard() {
         )}
 
         {/* Section 1: Documents by Subject */}
-        {((!isSearchActive && (visibleSubjects.length > 0 || selectedTerm === 'LIVE')) || 
-          (isSearchActive && visibleSubjects.length > 0)) && (
+        {/* Always show this section so users can manage subjects in any term */}
+        {(!isSearchActive || visibleSubjects.length > 0) && (
         <div className="card mb-8" style={{ border: 'none', boxShadow: '0 4px 20px -5px rgba(0,0,0,0.08)', borderRadius: '24px', overflow: 'hidden' }}>
           <div style={{ 
             padding: '24px 32px', 
