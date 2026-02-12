@@ -177,6 +177,26 @@ export default function AdminDashboard() {
   const [activeFilter, setActiveFilter] = useState('all');
   const [error, setError] = useState(null);
   
+  // Independent View State (allows Admin to view past terms without changing global system)
+  const [viewSettings, setViewSettings] = useState({
+    semester: settings.semester || 'FIRST SEMESTER',
+    academicYear: settings.academicYear || '2025-2026'
+  });
+
+  // Sync view only on initial load or if user hasn't manually changed view yet
+  useEffect(() => {
+    if (settings.semester && settings.academicYear) {
+       // Only sync if we want to default to LIVE view
+       // For now, let's respect manual view changes
+       if (!viewSettings.academicYear) {
+         setViewSettings({
+           semester: settings.semester,
+           academicYear: settings.academicYear
+         });
+       }
+    }
+  }, [settings.semester, settings.academicYear]);
+
   useEffect(() => {
     fetchChecklists();
     fetchGlobalStorageData();
@@ -185,7 +205,7 @@ export default function AdminDashboard() {
     const channel = supabase
       .channel('admin-global-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'checklists' }, (payload) => {
-          const termId = `${settings.academicYear}-${settings.semester}`;
+          const termId = `${viewSettings.academicYear}-${viewSettings.semester}`;
           if (payload.new?.term_id === termId || payload.old?.term_id === termId) {
             fetchChecklists(true); 
           }
@@ -194,15 +214,15 @@ export default function AdminDashboard() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [settings.semester, settings.academicYear, settings.deadline]);
+  }, [viewSettings.semester, viewSettings.academicYear, settings.deadline]);
 
   const fetchChecklists = async (isBackground = false) => {
     try {
       setError(null);
       if (!isBackground) setLoading(true);
 
-      const currentAy = settings.academicYear;
-      const currentSem = settings.semester;
+      const currentAy = viewSettings.academicYear;
+      const currentSem = viewSettings.semester;
       const termId = `${currentAy}-${currentSem}`;
 
       const { data: profiles, error: profileError } = await supabase
@@ -466,7 +486,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     calculateStats();
     applyFilters();
-  }, [checklists, searchTerm, activeFilter, settings.semester, settings.academicYear, settings.deadline, settings.deadlineEnabled]);
+  }, [checklists, searchTerm, activeFilter, viewSettings.semester, viewSettings.academicYear, settings.deadline, settings.deadlineEnabled]);
 
   const calculateStats = () => {
     const total = checklists.length;
@@ -972,18 +992,32 @@ export default function AdminDashboard() {
           <div className="card-body">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
               
-              {/* Group 1: Term Context */}
+              {/* Group 1: Term Context (View Only) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                <h3 style={{ fontSize: 'var(--text-sm)', color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
-                  Active Term
-                </h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ fontSize: 'var(--text-sm)', color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
+                    Admin View Context
+                  </h3>
+                  {/* Show Global Sync Status */}
+                  {(viewSettings.semester !== settings.semester || viewSettings.academicYear !== settings.academicYear) && (
+                    <button 
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => updateSettings({ semester: viewSettings.semester, academicYear: viewSettings.academicYear })}
+                      title="Make this the active term for all faculty"
+                      style={{ fontSize: '10px', padding: '2px 8px', background: 'var(--nvsu-yellow-pale)', color: 'var(--nvsu-yellow-dark)', border: '1px solid var(--nvsu-yellow)' }}
+                    >
+                      ⚠️ Sync to Global
+                    </button>
+                  )}
+                </div>
+                
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="form-group">
-                    <label className="form-label">Semester</label>
+                    <label className="form-label">Viewing Semester</label>
                     <select 
                       className="form-select"
-                      value={settings.semester}
-                      onChange={(e) => updateSettings({ semester: e.target.value })}
+                      value={viewSettings.semester}
+                      onChange={(e) => setViewSettings({ ...viewSettings, semester: e.target.value })}
                     >
                       {availableSemesters.map(s => (
                         <option key={s} value={s}>{s}</option>
@@ -991,17 +1025,22 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Academic Year</label>
+                    <label className="form-label">Viewing Year</label>
                     <select 
                       className="form-select"
-                      value={settings.academicYear}
-                      onChange={(e) => updateSettings({ academicYear: e.target.value })}
+                      value={viewSettings.academicYear}
+                      onChange={(e) => setViewSettings({ ...viewSettings, academicYear: e.target.value })}
                     >
                       {availableYears.map(y => (
                         <option key={y} value={y}>{y}</option>
                       ))}
                     </select>
                   </div>
+                </div>
+                
+                {/* Global Status Indicator */}
+                <div style={{ fontSize: '11px', color: 'var(--gray-500)', background: 'var(--gray-50)', padding: '8px', borderRadius: '6px' }}>
+                  <strong>Global Active Term:</strong> {settings.semester}, {settings.academicYear}
                 </div>
               </div>
 

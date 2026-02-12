@@ -178,14 +178,6 @@ export default function ChecklistView() {
 
       if (error) throw error;
 
-      // DEBUG: Log the raw data from database
-      console.log('ChecklistView - Fetched data:', {
-        term_id: data.term_id,
-        subjects_count: data.subjects?.length || 0,
-        subjects: data.subjects,
-        other_docs_count: data.other_docs?.length || 0
-      });
-
       // Hydrate previews for documents
       // Batched Hydration for Admin View
       // Batched Hydration for Admin View
