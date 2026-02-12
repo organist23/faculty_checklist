@@ -164,8 +164,66 @@ export default function FacultyDashboard() {
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
   const [subjectError, setSubjectError] = useState('');
   const [internalSearch, setInternalSearch] = useState('');
-  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  const compressImage = async (file) => {
+    // Only compress images
+    if (!file.type.startsWith('image/')) return file;
+    
+    // Don't compress small images (e.g. under 500KB)
+    if (file.size < 500 * 1024) return file;
 
+    return new Promise((resolve) => {
+      const img = new Image();
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        img.src = e.target.result;
+      };
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        // Target: Max 1600px width/height for documents (plenty for legibility)
+        const MAX_DIM = 1600;
+        if (width > height) {
+          if (width > MAX_DIM) {
+            height *= MAX_DIM / width;
+            width = MAX_DIM;
+          }
+        } else {
+          if (height > MAX_DIM) {
+            width *= MAX_DIM / height;
+            height = MAX_DIM;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve(file); // Fallback to original
+            return;
+          }
+          const compressed = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: Date.now()
+          });
+          resolve(compressed);
+        }, 'image/jpeg', 0.82); // High quality (82%)
+      };
+      
+      img.onerror = () => resolve(file); // Fallback
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
+  
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
@@ -718,20 +776,13 @@ export default function FacultyDashboard() {
     }
   };
 
-  const handleFileUpload = async (key, files) => {
-    if (!files || files.length === 0) return;
+  const handleFileUpload = async (key, selectedFiles) => {
+    if (!selectedFiles || selectedFiles.length === 0) return;
     
     if (!navigator.onLine) {
        addToast('No internet connection. Please check your network.', 'error');
        return;
     }
-    
-    /* ALLOW PREVIOUS SEMESTER UPLOADS
-    if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
-       addToast('Cannot upload documents for past semesters.', 'error');
-       return;
-    }
-    */
     
     // Set specific item as uploading
     setUploadingItems(prev => ({ ...prev, [key]: true }));
@@ -748,30 +799,40 @@ export default function FacultyDashboard() {
          docName = DEFAULT_DOCUMENTS.subjects[docIdx];
       } else {
          type = 'other';
-         itemId = key; // itemId is now the document name (e.g. "Faculty Workload")
+         itemId = key;
          docName = key;
       }
 
       const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
       const newDocs = [];
-      for (const file of Array.from(files)) {
-        // Size validation
+      const fileList = Array.from(selectedFiles);
+
+      // SEQUENTIAL PROCESSING: Prevents memory spikes on mobile
+      for (const file of fileList) {
         if (file.size > MAX_FILE_SIZE) {
-          addToast(`File ${file.name} exceeds the 20MB limit.`, 'error');
-          continue; // Skip this file
+          addToast(`File ${file.name} is too large (>20MB).`, 'error');
+          continue;
         }
 
-        // Unique filename with random string to prevent collisions
-        const uniqueSuffix = Math.random().toString(36).substring(2, 15);
+        // 1. COMPRESS (If Image)
+        const fileToUpload = await compressImage(file);
+
+        // 2. UPLOAD
+        const uniqueSuffix = Math.random().toString(36).substring(2, 8);
         const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
         const filePath = `${user.id}/${Date.now()}_${uniqueSuffix}_${cleanName}`;
         
         const { error: uploadError } = await supabase.storage
           .from('checklists')
-          .upload(filePath, file);
+          .upload(filePath, fileToUpload);
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+          console.error(`Upload failed for ${file.name}:`, uploadError);
+          addToast(`Failed to upload ${file.name}`, 'error');
+          continue;
+        }
 
+        // 3. GET SIGNED URL (For immediate UI feedback)
         const { data: signData } = await supabase.storage
           .from('checklists')
           .createSignedUrl(filePath, 3600);
@@ -779,37 +840,30 @@ export default function FacultyDashboard() {
         newDocs.push({
           name: file.name,
           path: filePath,
-          size: file.size, // Store file size in bytes
+          size: fileToUpload.size,
           preview: signData?.signedUrl,
           uploadedAt: new Date().toISOString(),
           type: docName 
         });
       }
 
-      // Calculate the new state SYNCHRONOUSLY based on the current checklist state
-      // This ensures we have a concrete object to sync to the database
+      if (newDocs.length === 0) {
+         setUploadingItems(prev => ({ ...prev, [key]: false }));
+         return;
+      }
+
+      // Calculate final state
       const updatedSubjects = checklist.subjects.map(s => {
         if (s.id === itemId && type === 'subject') {
-           const newRejectedTypes = s.rejected_types 
-               ? s.rejected_types.filter(t => t !== docName)
-               : s.rejected_types;
-           
-           return { 
-               ...s, 
-               docs: [...(s.docs || []), ...newDocs],
-               rejected_types: newRejectedTypes 
-           };
+           const newRejected = s.rejected_types?.filter(t => t !== docName) || [];
+           return { ...s, docs: [...(s.docs || []), ...newDocs], rejected_types: newRejected };
         }
         return s;
       });
       
       const updatedOther = checklist.other_docs.map(o => {
         if (o.name === itemId && type === 'other') {
-           return { 
-               ...o, 
-               docs: [...(o.docs || []), ...newDocs],
-               rejected: false 
-           };
+           return { ...o, docs: [...(o.docs || []), ...newDocs], rejected: false };
         }
         return o;
       });
@@ -821,37 +875,15 @@ export default function FacultyDashboard() {
         status: checklist.status === 'revision' ? 'pending' : checklist.status
       };
 
-      // 1. Update UI immediately
+      // Update Local State + DB
       setChecklist(nextChecklist);
+      await updateChecklistInDB(nextChecklist);
+      addToast('Upload Successful', 'success');
 
-      // 2. Sync to DB and wait for confirmation
-      console.log('Syncing upload to database for checklist ID:', nextChecklist.id);
-      const dbSuccess = await updateChecklistInDB(nextChecklist);
-      
-      if (dbSuccess !== false) {
-        console.log('Database sync successful.');
-        addToast('Uploaded Successful', 'success');
-      } else {
-        console.error('Database sync failed internally.');
-        addToast('Database sync failed. Refreshing data...', 'error');
-        fetchChecklist(true); // Re-sync from DB
-      }
     } catch (err) {
-      console.error('Upload Error:', err);
-      
-      // Provide more specific error messages
-      let errorMessage = 'Upload failed';
-      if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (err.message?.includes('storage')) {
-        errorMessage = 'Storage error. Please try again or contact support.';
-      } else if (err.message) {
-        errorMessage = 'Upload failed: ' + err.message;
-      }
-      
-      addToast(errorMessage, 'error');
+      console.error('Batch Upload Error:', err);
+      addToast('An error occurred during upload.', 'error');
     } finally {
-      // Clear specific item uploading status
       setUploadingItems(prev => ({ ...prev, [key]: false }));
     }
   };
@@ -2559,6 +2591,7 @@ export default function FacultyDashboard() {
                         handleFileUpload(mediaCapture.key, e.target.files);
                       }
                       setMediaCapture({ isOpen: false, key: null, docName: null });
+                      e.target.value = null; // Clear to allow re-selection
                     }}
                     hidden 
                   />
@@ -2619,6 +2652,7 @@ export default function FacultyDashboard() {
                         handleFileUpload(mediaCapture.key, e.target.files);
                       }
                       setMediaCapture({ isOpen: false, key: null, docName: null });
+                      e.target.value = null; // Clear
                     }}
                     hidden 
                   />

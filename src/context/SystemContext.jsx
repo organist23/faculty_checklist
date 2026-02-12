@@ -67,13 +67,14 @@ export function SystemProvider({ children }) {
         .single();
 
       if (error) {
+        // If it's a silent background poll and we get a 401 (Unauthorized), 
+        // it's likely a temporary session sync issue. Ignore it.
+        if (silent && (error.code === '401' || error.status === 401)) {
+           return; 
+        }
+
         if (!silent) {
-          console.error('System Settings DB Fetch Error Details:', {
-            code: error.code,
-            message: error.message,
-            details: error.details,
-            hint: error.hint
-          });
+          console.error('System Settings DB Fetch Error:', error);
         }
         throw error;
       }
@@ -94,17 +95,9 @@ export function SystemProvider({ children }) {
         dbId: data.id // Save the ID for future updates
       }));
     } catch (err) {
-      if (!silent) console.error('fetchSettings Catch Block:', err);
+      if (!silent) console.error('fetchSettings Exception:', err);
       if (!silent) {
-        // Reset to safety defaults if fetch fails completely
-        setSettings({
-          semester: 'FIRST SEMESTER',
-          academicYear: '2025-2026', 
-          deadline: null,
-          deadlineEnabled: false,
-          loading: false,
-          dbId: null
-        });
+        setSettings(prev => ({ ...prev, loading: false }));
       }
     }
   };
