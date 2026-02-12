@@ -267,7 +267,12 @@ export default function ChecklistView() {
         college: data.faculty_profiles.college,
         department: data.faculty_profiles.department,
         status: data.status,
-        semester: data.term_id.split('-').slice(2).join(' '),  // Everything after YYYY-YYYY
+        semester: (() => {
+          let sem = data.term_id.split('-').slice(2).join(' ').trim().toUpperCase();
+          if (sem === '1') return 'FIRST SEMESTER';
+          if (sem === '2') return 'SECOND SEMESTER';
+          return sem;
+        })(),
         academicYear: data.term_id.split('-').slice(0, 2).join('-'),  // YYYY-YYYY
         subjects: hydratedSubjects,
         other_docs: hydratedOther,
@@ -469,9 +474,16 @@ export default function ChecklistView() {
         const { data: updateData, error: updateError } = await supabase
           .from('checklists')
           .update({ 
-            subjects: updatedSubjects,
-            other_docs: updatedOther,
-            status: 'revision' 
+            subjects: updatedSubjects.map(s => ({
+              ...s,
+              docs: (s.docs || []).map(d => ({ ...d, preview: undefined }))
+            })),
+            other_docs: updatedOther.map(o => ({
+              ...o,
+              docs: (o.docs || []).map(d => ({ ...d, preview: undefined }))
+            })),
+            status: 'revision',
+            updated_at: new Date().toISOString()
           })
           .eq('id', id)
           .select(); // Must select to see if it worked
@@ -550,14 +562,14 @@ export default function ChecklistView() {
 
     if (isRejected) {
       return (
-        <span className="upload-status" style={{ color: '#dc2626', fontWeight: 'bold', fontSize: '0.9em', display: 'block' }}>
-          ⚠️ Waiting for Revision
+        <span className="upload-status" style={{ color: '#dc2626', fontWeight: '800', fontSize: '0.85rem', display: 'block', textTransform: 'uppercase' }}>
+          ⚠️ Needs Revision
         </span>
       );
     }
     
     return (
-      <span className="upload-status" style={{ display: 'block' }}>
+      <span className="upload-status" style={{ display: 'block', color: 'var(--gray-500)', fontWeight: '500', fontSize: '0.85rem' }}>
         ⏳ Not uploaded
       </span>
     );
@@ -705,11 +717,15 @@ export default function ChecklistView() {
                         if (!activeDocIndices.includes(idx)) return null;
                         return (
                           <th key={idx} style={{ 
-                            background: '#f8fafc', 
+                            background: 'var(--brand-blue-pale)', 
                             padding: '16px 12px', 
                             borderBottom: '2px solid var(--gray-100)', 
                             textAlign: 'center',
-                            fontSize: '0.8rem',
+                            fontSize: '0.75rem',
+                            fontWeight: '900',
+                            color: 'var(--brand-blue-dark)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.05em',
                             minWidth: '100px'
                           }}>
                             {doc}
@@ -729,8 +745,8 @@ export default function ChecklistView() {
                     {filteredSubjects.map((subject) => (
                       <tr key={subject.id} style={{ transition: 'background 0.2s' }}>
                         <td data-label="Subject" style={{ padding: '16px 24px', verticalAlign: 'middle' }}>
-                          <div style={{ fontWeight: '800', color: 'var(--brand-blue-dark)' }}>{subject.code}</div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--gray-500)', fontWeight: '500' }}>{subject.name}</div>
+                          <div style={{ fontWeight: '900', color: 'var(--brand-blue-dark)', fontSize: '1rem', letterSpacing: '-0.01em' }}>{subject.code}</div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--gray-700)', fontWeight: '600' }}>{subject.name}</div>
                         </td>
                         {checklist.documentsBySubject.map((doc, docIdx) => {
                           if (!activeDocIndices.includes(docIdx)) return null;
@@ -839,10 +855,10 @@ export default function ChecklistView() {
                 <table className="table" style={{ borderCollapse: 'separate', borderSpacing: '0' }}>
                   <thead>
                     <tr>
-                      <th style={{ background: '#f8fafc', padding: '16px 24px', borderBottom: '2px solid var(--gray-100)', width: '40%' }}>Document Item</th>
-                      <th style={{ background: '#f8fafc', padding: '16px', borderBottom: '2px solid var(--gray-100)', textAlign: 'center' }}>Status</th>
-                      <th style={{ background: '#f8fafc', padding: '16px', borderBottom: '2px solid var(--gray-100)', textAlign: 'center' }}>Preview</th>
-                      <th style={{ background: '#f8fafc', padding: '16px', borderBottom: '2px solid var(--gray-100)', textAlign: 'center' }}>Action</th>
+                      <th style={{ background: 'var(--brand-blue-pale)', color: 'var(--brand-blue-dark)', padding: '16px 24px', borderBottom: '2px solid var(--gray-100)', width: '40%', fontWeight: '900', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Document Item</th>
+                      <th style={{ background: 'var(--brand-blue-pale)', color: 'var(--brand-blue-dark)', padding: '16px', borderBottom: '2px solid var(--gray-100)', textAlign: 'center', fontWeight: '900', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Status</th>
+                      <th style={{ background: 'var(--brand-blue-pale)', color: 'var(--brand-blue-dark)', padding: '16px', borderBottom: '2px solid var(--gray-100)', textAlign: 'center', fontWeight: '900', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Preview</th>
+                      <th style={{ background: 'var(--brand-blue-pale)', color: 'var(--brand-blue-dark)', padding: '16px', borderBottom: '2px solid var(--gray-100)', textAlign: 'center', fontWeight: '900', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.05em' }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>

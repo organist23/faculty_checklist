@@ -260,7 +260,13 @@ export default function FacultyDashboard() {
       }
       
       // Ensure current live term is always in the list even if no checklist exists yet
-      const liveTerm = `${settings.academicYear}-${settings.semester === '1' ? 'FIRST SEMESTER' : settings.semester === '2' ? 'SECOND SEMESTER' : settings.semester}`;
+      const normSem = (s) => {
+         const up = (s || '').toString().toUpperCase().trim();
+         if (up === '1') return 'FIRST SEMESTER';
+         if (up === '2') return 'SECOND SEMESTER';
+         return up;
+      };
+      const liveTerm = `${settings.academicYear}-${normSem(settings.semester)}`;
       if (!terms.includes(liveTerm)) {
           terms.push(liveTerm);
       }
@@ -720,8 +726,6 @@ export default function FacultyDashboard() {
        return;
     }
     
-    console.log(`Starting upload for key: ${key}`, { fileCount: files.length });
-    
     /* ALLOW PREVIOUS SEMESTER UPLOADS
     if (selectedTerm !== 'LIVE' && isPastTerm(checklist.term_id, settings.academicYear, settings.semester)) {
        addToast('Cannot upload documents for past semesters.', 'error');
@@ -735,7 +739,7 @@ export default function FacultyDashboard() {
     try {
       let type, itemId, docName;
 
-      // Parse Key (e.g., "subject-ID-IDX" or "Document Name")
+      // Parse Key
       if (key.startsWith('subject-')) {
          type = 'subject';
          const parts = key.split('-');
@@ -744,109 +748,122 @@ export default function FacultyDashboard() {
          docName = DEFAULT_DOCUMENTS.subjects[docIdx];
       } else {
          type = 'other';
-         itemId = key; 
+         itemId = key; // itemId is now the document name (e.g. "Faculty Workload")
          docName = key;
       }
 
       const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
       const newDocs = [];
-      const fileArray = Array.from(files);
-
-      for (const file of fileArray) {
+      for (const file of Array.from(files)) {
+        // Size validation
         if (file.size > MAX_FILE_SIZE) {
-          addToast(`File ${file.name} exceeds 20MB limit.`, 'error');
-          continue;
+          addToast(`File ${file.name} exceeds the 20MB limit.`, 'error');
+          continue; // Skip this file
         }
 
-        const uniqueSuffix = Math.random().toString(36).substring(2, 10);
-        const fileExt = file.name.split('.').pop().toLowerCase() || 'jpg';
-        const cleanName = `${Date.now()}_${uniqueSuffix}.${fileExt}`;
-        const filePath = `${user.id}/${cleanName}`;
+        // Unique filename with random string to prevent collisions
+        const uniqueSuffix = Math.random().toString(36).substring(2, 15);
+        const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filePath = `${user.id}/${Date.now()}_${uniqueSuffix}_${cleanName}`;
         
-        console.log(`Uploading file to Supabase: ${filePath}`);
-
         const { error: uploadError } = await supabase.storage
           .from('checklists')
-          .upload(filePath, file, {
-            upsert: false,
-            contentType: file.type || 'image/jpeg'
-          });
+          .upload(filePath, file);
 
-        if (uploadError) {
-          console.error('Supabase Storage Error:', uploadError);
-          throw uploadError;
-        }
+        if (uploadError) throw uploadError;
 
-        // Get signed URL immediately for fast UI feedback
-        const { data: signData, error: signError } = await supabase.storage
+        const { data: signData } = await supabase.storage
           .from('checklists')
           .createSignedUrl(filePath, 3600);
-
-        if (signError) console.warn('Signed URL warning:', signError);
 
         newDocs.push({
           name: file.name,
           path: filePath,
-          size: file.size,
+          size: file.size, // Store file size in bytes
           preview: signData?.signedUrl,
           uploadedAt: new Date().toISOString(),
           type: docName 
         });
       }
 
-      if (newDocs.length === 0) throw new Error('No files were processed.');
-
-      // Update State
-      let latestState = null;
-      setChecklist(prev => {
-        const updatedSubjects = prev.subjects.map(s => {
-          if (s.id === itemId && type === 'subject') {
-             const newRejectedTypes = (s.rejected_types || []).filter(t => t !== docName);
-             return { ...s, docs: [...(s.docs || []), ...newDocs], rejected_types: newRejectedTypes };
-          }
-          return s;
-        });
-        
-        const updatedOther = prev.other_docs.map(o => {
-          if (o.name === itemId && type === 'other') {
-             return { ...o, docs: [...(o.docs || []), ...newDocs], rejected: false };
-          }
-          return o;
-        });
-        
-        latestState = {
-          ...prev,
-          subjects: updatedSubjects,
-          other_docs: updatedOther,
-          status: prev.status === 'revision' ? 'pending' : prev.status
-        };
-        return latestState;
+      // Calculate the new state SYNCHRONOUSLY based on the current checklist state
+      // This ensures we have a concrete object to sync to the database
+      const updatedSubjects = checklist.subjects.map(s => {
+        if (s.id === itemId && type === 'subject') {
+           const newRejectedTypes = s.rejected_types 
+               ? s.rejected_types.filter(t => t !== docName)
+               : s.rejected_types;
+           
+           return { 
+               ...s, 
+               docs: [...(s.docs || []), ...newDocs],
+               rejected_types: newRejectedTypes 
+           };
+        }
+        return s;
       });
+      
+      const updatedOther = checklist.other_docs.map(o => {
+        if (o.name === itemId && type === 'other') {
+           return { 
+               ...o, 
+               docs: [...(o.docs || []), ...newDocs],
+               rejected: false 
+           };
+        }
+        return o;
+      });
+      
+      const nextChecklist = {
+        ...checklist,
+        subjects: updatedSubjects,
+        other_docs: updatedOther,
+        status: checklist.status === 'revision' ? 'pending' : checklist.status
+      };
 
-      // Crucial: Wait for state update to settle then sync DB
-      // We use the latestState variable captured in the functional update
-      if (latestState) {
-        await updateChecklistInDB(latestState);
-      }
+      // 1. Update UI immediately
+      setChecklist(nextChecklist);
 
-      addToast('Uploaded Successful', 'success');
-      console.log('Upload workflow completed successfully.');
-    } catch (err) {
-      console.error('Final Upload Exception:', err);
-      let errorMessage = 'Upload failed';
-      if (err.message?.includes('Failed to fetch')) {
-        errorMessage = 'Network error. Please check your signal.';
+      // 2. Sync to DB and wait for confirmation
+      console.log('Syncing upload to database for checklist ID:', nextChecklist.id);
+      const dbSuccess = await updateChecklistInDB(nextChecklist);
+      
+      if (dbSuccess !== false) {
+        console.log('Database sync successful.');
+        addToast('Uploaded Successful', 'success');
       } else {
-        errorMessage = err.message || 'Upload failed. Please try again.';
+        console.error('Database sync failed internally.');
+        addToast('Database sync failed. Refreshing data...', 'error');
+        fetchChecklist(true); // Re-sync from DB
       }
+    } catch (err) {
+      console.error('Upload Error:', err);
+      
+      // Provide more specific error messages
+      let errorMessage = 'Upload failed';
+      if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (err.message?.includes('storage')) {
+        errorMessage = 'Storage error. Please try again or contact support.';
+      } else if (err.message) {
+        errorMessage = 'Upload failed: ' + err.message;
+      }
+      
       addToast(errorMessage, 'error');
     } finally {
+      // Clear specific item uploading status
       setUploadingItems(prev => ({ ...prev, [key]: false }));
     }
   };
 
   const updateChecklistInDB = async (state) => {
     try {
+      if (!state.id) {
+        console.error('CRITICAL: Cannot sync to DB - Checklist ID is missing.');
+        return false;
+      }
+
+      console.log('Initiating DB Sync for Checklist:', state.id);
       const { error } = await supabase
         .from('checklists')
         .update({
@@ -858,21 +875,29 @@ export default function FacultyDashboard() {
               ...o, 
               docs: o.docs.map(d => ({ ...d, preview: undefined })) 
           })),
-          status: state.status, // Sync status as well
+          status: state.status,
           updated_at: new Date().toISOString()
         })
         .eq('id', state.id);
         
       if (error) {
-        console.error('DB Auto-save failed:', error);
+        console.error('DB Sync Error:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         
-        // Handle "Ghost Faculty" on auto-save
         if (error.code === '23503' && error.message?.includes('faculty_profiles')) {
           logout();
         }
+        return false;
       }
+      
+      return true;
     } catch (err) {
-      console.error('DB Update Exception:', err);
+      console.error('DB Sync Exception:', err);
+      return false;
     }
   };
 
@@ -2496,35 +2521,46 @@ export default function FacultyDashboard() {
             <div style={{ padding: '24px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {/* Take Photo Option */}
-                <label className="upload-option-card camera" style={{ position: 'relative' }}>
+                <label 
+                  style={{ 
+                    cursor: 'pointer',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: '12px',
+                    padding: '30px 20px', 
+                    borderRadius: '20px', 
+                    background: '#ffffff',
+                    border: '2px solid var(--gray-100)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    textAlign: 'center'
+                  }}
+                  className="upload-option-card"
+                  onMouseOver={e => {
+                    e.currentTarget.style.borderColor = 'var(--brand-blue)';
+                    e.currentTarget.style.background = 'var(--brand-blue-pale)';
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(26, 67, 128, 0.1)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.borderColor = 'var(--gray-100)';
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
                   <input 
                     type="file" 
                     accept="image/*" 
                     capture="environment" 
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
-                        const targetFiles = e.target.files;
-                        const targetKey = mediaCapture.key;
-                        
-                        // Close modal after a tiny delay so the OS transition feels smoother
-                        setTimeout(() => setMediaCapture({ isOpen: false, key: null, docName: null }), 100);
-                        
-                        // Start upload
-                        await handleFileUpload(targetKey, targetFiles);
-                      } else {
-                        setMediaCapture({ isOpen: false, key: null, docName: null });
+                        handleFileUpload(mediaCapture.key, e.target.files);
                       }
+                      setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
-                    style={{ 
-                      position: 'absolute', 
-                      top: 0, 
-                      left: 0, 
-                      width: '100%', 
-                      height: '100%', 
-                      opacity: 0, 
-                      cursor: 'pointer',
-                      zIndex: 10 
-                    }}
+                    hidden 
                   />
                   <div style={{ 
                     width: '64px', 
@@ -2544,34 +2580,47 @@ export default function FacultyDashboard() {
                   </div>
                 </label>
 
-                {/* Gallery / File Option */}
-                <label className="upload-option-card gallery" style={{ position: 'relative' }}>
+                {/* Gallery Option */}
+                <label 
+                  style={{ 
+                    cursor: 'pointer',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: '12px',
+                    padding: '30px 20px', 
+                    borderRadius: '20px', 
+                    background: '#ffffff',
+                    border: '2px solid var(--gray-100)',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    textAlign: 'center'
+                  }}
+                  className="upload-option-card"
+                  onMouseOver={e => {
+                    e.currentTarget.style.borderColor = 'var(--brand-green)';
+                    e.currentTarget.style.background = '#f0fdf4';
+                    e.currentTarget.style.transform = 'translateY(-4px)';
+                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(0, 104, 55, 0.1)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.borderColor = 'var(--gray-100)';
+                    e.currentTarget.style.background = '#ffffff';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
                   <input 
                     type="file" 
                     accept="image/*" 
                     multiple
-                    onChange={async (e) => {
+                    onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
-                        const targetFiles = e.target.files;
-                        const targetKey = mediaCapture.key;
-                        
-                        setTimeout(() => setMediaCapture({ isOpen: false, key: null, docName: null }), 100);
-                        
-                        await handleFileUpload(targetKey, targetFiles);
-                      } else {
-                        setMediaCapture({ isOpen: false, key: null, docName: null });
+                        handleFileUpload(mediaCapture.key, e.target.files);
                       }
+                      setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
-                    style={{ 
-                      position: 'absolute', 
-                      top: 0, 
-                      left: 0, 
-                      width: '100%', 
-                      height: '100%', 
-                      opacity: 0, 
-                      cursor: 'pointer',
-                      zIndex: 10 
-                    }} 
+                    hidden 
                   />
                   <div style={{ 
                     width: '64px', 
@@ -2587,13 +2636,13 @@ export default function FacultyDashboard() {
                   }}>🖼️</div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gallery</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Choose Photos</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Choose Files</span>
                   </div>
                 </label>
               </div>
               
               <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.8rem', color: 'var(--gray-400)', fontWeight: '500' }}>
-                You can upload multiple files at once.
+                You can upload multiple files from your gallery.
               </p>
             </div>
 

@@ -156,7 +156,10 @@ const PremiumDeadlinePicker = ({ value, onChange, disabled }) => {
 
 const normalizeSemester = (sem) => {
   if (!sem) return sem;
-  return sem.toString().toUpperCase().trim();
+  const up = sem.toString().toUpperCase().trim();
+  if (up === '1') return 'FIRST SEMESTER';
+  if (up === '2') return 'SECOND SEMESTER';
+  return up;
 };
 
 export default function AdminDashboard() {
@@ -179,23 +182,26 @@ export default function AdminDashboard() {
   
   // Independent View State (allows Admin to view past terms without changing global system)
   const [viewSettings, setViewSettings] = useState({
-    semester: settings.semester || 'FIRST SEMESTER',
-    academicYear: settings.academicYear || '2025-2026'
+    semester: '',
+    academicYear: ''
   });
 
-  // Sync view only on initial load or if user hasn't manually changed view yet
+  // Track if we've performed the initial sync from global settings
+  const [hasSyncedInitialView, setHasSyncedInitialView] = useState(false);
+
+  // Sync view when settings load or change, but only if the user hasn't manually switched to another term
   useEffect(() => {
-    if (settings.semester && settings.academicYear) {
-       // Only sync if we want to default to LIVE view
-       // For now, let's respect manual view changes
-       if (!viewSettings.academicYear) {
+    if (!settings.loading && settings.semester && settings.academicYear) {
+       // If no term is selected yet, or if we haven't synced the initial view, sync it now
+       if (!viewSettings.academicYear || (!hasSyncedInitialView)) {
          setViewSettings({
            semester: settings.semester,
            academicYear: settings.academicYear
          });
+         setHasSyncedInitialView(true);
        }
     }
-  }, [settings.semester, settings.academicYear]);
+  }, [settings.semester, settings.academicYear, settings.loading, hasSyncedInitialView]);
 
   useEffect(() => {
     fetchChecklists();
@@ -223,6 +229,12 @@ export default function AdminDashboard() {
 
       const currentAy = viewSettings.academicYear;
       const currentSem = viewSettings.semester;
+      
+      if (!currentAy || !currentSem) {
+         if (!isBackground) setLoading(false);
+         return;
+      }
+
       const termId = `${currentAy}-${currentSem}`;
 
       const { data: profiles, error: profileError } = await supabase
@@ -337,7 +349,11 @@ export default function AdminDashboard() {
           const parts = item.term_id.split('-');
           if (parts.length >= 2) {
             const year = `${parts[0]}-${parts[1]}`;
-            const sem = parts.slice(2).join(' ').trim().toUpperCase();
+            let sem = parts.slice(2).join(' ').trim().toUpperCase();
+            
+            // Normalize "1" or "2" tags found in legacy or third-party data
+            if (sem === '1') sem = 'FIRST SEMESTER';
+            if (sem === '2') sem = 'SECOND SEMESTER';
             
             const key = `${year}|${sem}`;
             if (!seen.has(key)) {
@@ -366,8 +382,9 @@ export default function AdminDashboard() {
 
   const availableSemesters = (() => {
     // Show semesters that exist for the selected year
-    const sems = new Set(allTerms.filter(t => t.year === settings.academicYear).map(t => t.sem));
-    // Always include current semester setting
+    // Important: Use viewSettings.academicYear to show semesters relevant to what the admin is currently looking at
+    const sems = new Set(allTerms.filter(t => t.year === viewSettings.academicYear).map(t => t.sem));
+    // Always include current semester setting as a candidate
     if (settings.semester) sems.add(settings.semester);
     
     // Strict Filter: Remove numeric tags like "1", "2" if they accidentally exist
@@ -773,7 +790,7 @@ export default function AdminDashboard() {
     // Handle Virtual Checklists (Faculty exists but no row in checklists table yet)
     if (id.toString().startsWith('virtual-')) {
       const facultyId = id.replace('virtual-', '');
-      const termId = `${settings.academicYear}-${settings.semester}`;
+      const termId = `${viewSettings.academicYear}-${viewSettings.semester}`;
       
       try {
         setLoading(true);

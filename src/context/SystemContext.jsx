@@ -114,7 +114,9 @@ export function SystemProvider({ children }) {
       return { success: false, error: 'No internet connection. Cannot update settings.' };
     }
     try {
-      const dbPayload = {};
+      const dbPayload = {
+        updated_at: new Date().toISOString()
+      };
       if (newSettings.semester) dbPayload.current_semester = newSettings.semester;
       if (newSettings.academicYear) dbPayload.current_academic_year = newSettings.academicYear;
       
