@@ -2380,20 +2380,23 @@ export default function FacultyDashboard() {
           <div 
             className="modal-content" 
             style={{ 
-              maxWidth: '750px', 
+              maxWidth: 'min(750px, 95vw)', 
               width: '100%', 
+              maxHeight: '90vh',
               borderRadius: '24px', 
               background: '#ffffff',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
               border: '1px solid rgba(255, 255, 255, 0.2)',
               overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
               animation: 'slideUp 0.3s ease-out'
             }} 
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
             <div style={{ 
-              padding: '24px 32px', 
+              padding: viewportWidth < 768 ? '16px 20px' : '24px 32px', 
               background: 'linear-gradient(to right, var(--brand-blue-pale), #ffffff)', 
               borderBottom: '1px solid var(--gray-100)',
               display: 'flex',
@@ -2401,35 +2404,16 @@ export default function FacultyDashboard() {
               alignItems: 'center'
             }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', color: 'var(--brand-blue-dark)', letterSpacing: '-0.02em' }}>
+                <h3 style={{ margin: 0, fontSize: viewportWidth < 768 ? '1.1rem' : '1.4rem', fontWeight: '800', color: 'var(--brand-blue-dark)', letterSpacing: '-0.02em' }}>
                   Manage Your Subjects
                 </h3>
-                <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: 'var(--gray-500)' }}>
+                <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--gray-500)' }}>
                   Enter the subjects you are teaching this term.
                 </p>
               </div>
-              <button 
-                onClick={() => setShowSubjectManager(false)} 
-                style={{ 
-                  background: 'white', 
-                  border: '1px solid var(--gray-200)', 
-                  width: '36px', 
-                  height: '36px', 
-                  borderRadius: '50%', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  cursor: 'pointer', 
-                  color: 'var(--gray-600)',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-                  transition: 'all 0.2s'
-                }}
-                onMouseOver={e => { e.currentTarget.style.background = 'var(--gray-50)'; e.currentTarget.style.color = 'var(--nvsu-red)'; }}
-                onMouseOut={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.color = 'var(--gray-600)'; }}
-              >✕</button>
             </div>
 
-            <div className="modal-body" style={{ padding: '32px' }}>
+            <div className="modal-body" style={{ padding: viewportWidth < 768 ? '16px' : '32px', overflowY: 'auto' }}>
               {/* Add New Subject Form */}
               <div style={{ 
                 background: '#f8fafc', 
@@ -2554,13 +2538,13 @@ export default function FacultyDashboard() {
               </div>
             </div>
 
-            <div className="modal-footer" style={{ borderTop: '1px solid var(--gray-100)', padding: '24px 32px' }}>
+            <div className="modal-footer" style={{ borderTop: '1px solid var(--gray-100)', padding: viewportWidth < 768 ? '16px' : '24px 32px', display: 'flex' }}>
               <button 
                 className="btn btn-secondary" 
                 onClick={() => setShowSubjectManager(false)}
-                style={{ marginLeft: 'auto', padding: '12px 32px', borderRadius: '12px', fontWeight: '800' }}
+                style={{ width: viewportWidth < 768 ? '100%' : 'auto', marginLeft: 'auto', padding: '12px 32px', borderRadius: '12px', fontWeight: '800' }}
               >
-                Finished
+                Done
               </button>
             </div>
           </div>

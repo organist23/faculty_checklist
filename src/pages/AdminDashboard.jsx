@@ -937,11 +937,38 @@ export default function AdminDashboard() {
           <div className="card-header" style={{ borderBottom: '1px solid var(--gray-100)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="card-title" style={{ color: 'var(--nvsu-green-dark)', margin: 0 }}>System Settings</h2>
             
-            <div className="dropdown-container" ref={settingsMenuRef}>
+            <div className="dropdown-container" ref={settingsMenuRef} style={{ position: 'relative' }}>
               <button 
-                className="btn-icon" 
                 onClick={() => setShowSettingsMenu(!showSettingsMenu)}
-                title="More Options"
+                title="System Settings Menu"
+                style={{ 
+                  background: showSettingsMenu ? 'var(--gray-100)' : '#f8fafc', 
+                  border: '1px solid var(--gray-200)', 
+                  width: '44px', 
+                  height: '44px', 
+                  borderRadius: '12px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  cursor: 'pointer', 
+                  color: 'var(--brand-blue-dark)',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                  fontSize: '1.4rem',
+                  padding: 0
+                }}
+                onMouseOver={e => {
+                  e.currentTarget.style.background = 'var(--gray-100)';
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.08)';
+                }}
+                onMouseOut={e => {
+                  if (!showSettingsMenu) {
+                    e.currentTarget.style.background = '#f8fafc';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+                  }
+                }}
               >
                 <span>⋮</span>
               </button>
@@ -1012,9 +1039,7 @@ export default function AdminDashboard() {
               {/* Group 1: Term Context (View Only) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3 style={{ fontSize: 'var(--text-sm)', color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
-                    Admin View Context
-                  </h3>
+                  <div style={{ visibility: 'hidden', height: 0, overflow: 'hidden' }}>Admin View Context</div>
                   {/* Show Global Sync Status */}
                   {(viewSettings.semester !== settings.semester || viewSettings.academicYear !== settings.academicYear) && (
                     <button 
@@ -1030,7 +1055,7 @@ export default function AdminDashboard() {
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="form-group">
-                    <label className="form-label">Viewing Semester</label>
+                    {/* Label removed for professional look */}
                     <select 
                       className="form-select"
                       value={viewSettings.semester}
@@ -1042,7 +1067,7 @@ export default function AdminDashboard() {
                     </select>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Viewing Year</label>
+                    {/* Label removed for professional look */}
                     <select 
                       className="form-select"
                       value={viewSettings.academicYear}
@@ -1055,24 +1080,31 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 
-                {/* Global Status Indicator */}
-                <div style={{ fontSize: '11px', color: 'var(--gray-500)', background: 'var(--gray-50)', padding: '8px', borderRadius: '6px' }}>
-                  <strong>Global Active Term:</strong> {settings.semester}, {settings.academicYear}
-                </div>
+                
               </div>
 
               {/* Group 2: Compliance Policy */}
               <div className="settings-group with-border">
-                <h3 style={{ fontSize: 'var(--text-sm)', color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--space-2)' }}>
-                  Submission Policy
-                </h3>
+                <div style={{ visibility: 'hidden', height: 0, overflow: 'hidden' }}>Submission Policy</div>
                 
                 <div className="form-group">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-3)', background: 'var(--gray-50)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', border: '1px solid var(--gray-200)' }}>
-                    <label className="form-label" style={{ margin: 0, color: 'var(--nvsu-green-dark)' }}>Overall Deadline Control</label>
-                    <label className="switch-label" style={{ cursor: 'pointer' }}>
-                      <div className="switch">
-                        <label htmlFor="deadline-toggle" className="sr-only">Toggle Deadline</label>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    marginBottom: 'var(--space-3)', 
+                    background: '#f8fafc', 
+                    padding: '12px 16px', 
+                    borderRadius: '16px', 
+                    border: '1px solid var(--gray-200)',
+                    width: '100%'
+                  }}>
+                    <label className="form-label" style={{ margin: 0, color: 'var(--brand-blue-dark)', fontWeight: '700', fontSize: '0.9rem' }}>Deadline Tracker</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: '800', color: settings.deadlineEnabled ? 'var(--brand-green)' : 'var(--gray-400)', textTransform: 'uppercase' }}>
+                        {settings.deadlineEnabled ? 'Active' : 'Disabled'}
+                      </span>
+                      <label className="switch" style={{ margin: 0 }}>
                         <input 
                           id="deadline-toggle"
                           type="checkbox" 
@@ -1080,11 +1112,8 @@ export default function AdminDashboard() {
                           onChange={(e) => updateSettings({ deadlineEnabled: e.target.checked })}
                         />
                         <span className="slider round"></span>
-                      </div>
-                      <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'bold', color: settings.deadlineEnabled ? 'var(--brand-green)' : 'var(--nvsu-red)', textTransform: 'uppercase', minWidth: '70px', textAlign: 'right' }}>
-                        {settings.deadlineEnabled ? 'ACTIVE' : 'OFF'}
-                      </span>
-                    </label>
+                      </label>
+                    </div>
                   </div>
                   
                   {/* Premium Integrated Picker (UI-UX Pro Max) */}
