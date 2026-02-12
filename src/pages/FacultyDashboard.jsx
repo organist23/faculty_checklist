@@ -2536,7 +2536,7 @@ export default function FacultyDashboard() {
                 >
                   <input 
                     type="file" 
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
+                    accept="image/*" 
                     multiple
                     onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
@@ -2557,10 +2557,10 @@ export default function FacultyDashboard() {
                     justifyContent: 'center',
                     fontSize: '2rem',
                     boxShadow: '0 8px 16px rgba(0, 104, 55, 0.2)'
-                  }}>📂</div>
+                  }}>🖼️</div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Browse Files</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Photos or Docs</span>
+                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gallery</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Choose Photos</span>
                   </div>
                 </label>
               </div>
