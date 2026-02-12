@@ -170,8 +170,10 @@ export default function FacultyDashboard() {
     isActive: false,
     stream: null,
     previewBlob: null,
-    facingMode: 'environment', // Start with back camera
-    loading: false
+    facingMode: 'environment',
+    loading: false,
+    torchAvailable: false,
+    torchEnabled: false
   });
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -198,10 +200,41 @@ export default function FacultyDashboard() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
+
+      // Check for Torch Capability
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+         try {
+           const caps = track.getCapabilities();
+           if (caps && 'torch' in caps) {
+             setCameraState(prev => ({ ...prev, torchAvailable: true }));
+           }
+         } catch (e) {
+           console.log('Torch capability check failed (browser restriction)');
+         }
+      }
+
     } catch (err) {
       console.error('Camera Error:', err);
       addToast('Could not access camera. Please check permissions.', 'error');
       setCameraState(prev => ({ ...prev, isActive: false, loading: false }));
+    }
+  };
+
+  const toggleTorch = async () => {
+    if (!cameraState.stream) return;
+    const track = cameraState.stream.getVideoTracks()[0];
+    if (!track) return;
+
+    try {
+      const newState = !cameraState.torchEnabled;
+      await track.applyConstraints({
+        advanced: [{ torch: newState }]
+      });
+      setCameraState(prev => ({ ...prev, torchEnabled: newState }));
+    } catch (err) {
+      console.error('Flash toggle error:', err);
+      addToast('Could not toggle flash', 'error');
     }
   };
 
@@ -214,7 +247,9 @@ export default function FacultyDashboard() {
       stream: null,
       previewBlob: null,
       facingMode: 'environment',
-      loading: false
+      loading: false,
+      torchAvailable: false,
+      torchEnabled: false
     });
   };
 
@@ -250,26 +285,18 @@ export default function FacultyDashboard() {
   };
 
   const compressImage = async (file) => {
-    // Only compress images
     if (!file.type.startsWith('image/')) return file;
-    
-    // Don't compress small images (e.g. under 500KB)
-    if (file.size < 500 * 1024) return file;
+    if (file.size < 500 * 1024) return file; // Skip small files
 
     return new Promise((resolve) => {
       const img = new Image();
-      const reader = new FileReader();
-      
-      reader.onload = (e) => {
-        img.src = e.target.result;
-      };
+      const objectUrl = URL.createObjectURL(file);
       
       img.onload = () => {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
         
-        // Target: Max 1600px width/height for documents (plenty for legibility)
         const MAX_DIM = 1600;
         if (width > height) {
           if (width > MAX_DIM) {
@@ -289,21 +316,30 @@ export default function FacultyDashboard() {
         ctx.drawImage(img, 0, 0, width, height);
         
         canvas.toBlob((blob) => {
+          // Cleanup
+          URL.revokeObjectURL(objectUrl);
+          canvas.width = 0;
+          canvas.height = 0;
+          
           if (!blob) {
-            resolve(file); // Fallback to original
+            resolve(file);
             return;
           }
+          
           const compressed = new File([blob], file.name, {
             type: 'image/jpeg',
             lastModified: Date.now()
           });
           resolve(compressed);
-        }, 'image/jpeg', 0.82); // High quality (82%)
+        }, 'image/jpeg', 0.8); // 80% quality is perfect for docs
       };
       
-      img.onerror = () => resolve(file); // Fallback
-      reader.onerror = () => resolve(file);
-      reader.readAsDataURL(file);
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(file);
+      };
+      
+      img.src = objectUrl;
     });
   };
 
@@ -2730,20 +2766,48 @@ export default function FacultyDashboard() {
           display: 'flex',
           flexDirection: 'column'
         }}>
-          {/* Header */}
+          {/* Integrated Header */}
           <div style={{ 
-            padding: '16px 20px', 
-            background: 'rgba(0,0,0,0.5)', 
+            padding: '24px 20px', 
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.85), transparent)', 
             display: 'flex', 
             justifyContent: 'space-between', 
             alignItems: 'center',
             color: 'white',
-            zIndex: 10
+            zIndex: 2000,
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            left: 0,
+            pointerEvents: 'none'
           }}>
-            <h4 style={{ margin: 0 }}>Live Camera: {mediaCapture.docName}</h4>
+            <div style={{ textAlign: 'left' }}>
+              <h4 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', textShadow: '0 2px 8px rgba(0,0,0,0.8)', letterSpacing: '-0.02em' }}>
+                {mediaCapture.docName}
+              </h4>
+            </div>
             <button 
-              onClick={stopCamera}
-              style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.5rem', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                stopCamera();
+              }}
+              style={{ 
+                background: 'rgba(255,255,255,0.2)', 
+                border: '1px solid rgba(255,255,255,0.4)', 
+                color: 'white', 
+                fontSize: '1.2rem', 
+                cursor: 'pointer', 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '50%', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                backdropFilter: 'blur(10px)',
+                pointerEvents: 'auto',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+              }}
             >✕</button>
           </div>
 
@@ -2780,36 +2844,66 @@ export default function FacultyDashboard() {
             <canvas ref={canvasRef} style={{ display: 'none' }} />
           </div>
 
-          {/* Controls */}
+          {/* Combined Header replaces old overlay */}
+
+          {/* Controls Area */}
           <div style={{ 
-            padding: '30px 20px 50px', 
-            background: 'rgba(0,0,0,0.8)', 
+            padding: '30px 20px 60px', 
+            background: 'black', 
             display: 'flex', 
-            justifyContent: 'center', 
+            flexDirection: 'column',
             alignItems: 'center',
-            gap: '30px',
+            gap: '24px',
             zIndex: 10
           }}>
             {!cameraState.previewBlob ? (
               <>
-                <button 
-                  onClick={() => startCamera(cameraState.facingMode === 'user' ? 'environment' : 'user')}
-                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid white', color: 'white', padding: '12px', borderRadius: '50%', width: '50px', height: '50px' }}
-                >🔄</button>
-                
-                <button 
-                  onClick={capturePhoto}
-                  style={{ 
-                    width: '74px', 
-                    height: '74px', 
-                    borderRadius: '50%', 
-                    background: 'white', 
-                    border: '5px solid #555',
-                    cursor: 'pointer'
-                  }}
-                />
+                <div style={{ display: 'flex', width: '100%', justifyContent: 'space-around', alignItems: 'center' }}>
+                  {/* Switch Camera */}
+                  <div style={{ textAlign: 'center' }}>
+                    <button 
+                      onClick={() => startCamera(cameraState.facingMode === 'user' ? 'environment' : 'user')}
+                      style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)', color: 'white', padding: '12px', borderRadius: '50%', width: '56px', height: '56px', fontSize: '1.4rem' }}
+                    >🔄</button>
+                  </div>
+                  
+                  {/* Capture Button */}
+                  <button 
+                    onClick={capturePhoto}
+                    style={{ 
+                      width: '82px', 
+                      height: '82px', 
+                      borderRadius: '50%', 
+                      background: 'white', 
+                      border: '6px solid rgba(255,255,255,0.3)',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 20px rgba(255,255,255,0.2)',
+                      padding: 0
+                    }}
+                  />
 
-                <div style={{ width: '50px' }} />
+                  {/* Flash/Torch Toggle */}
+                  <div style={{ textAlign: 'center' }}>
+                    <button 
+                      onClick={toggleTorch}
+                      disabled={!cameraState.torchAvailable}
+                      style={{ 
+                        background: cameraState.torchEnabled ? 'var(--nvsu-yellow)' : 'rgba(255,255,255,0.15)', 
+                        border: '1px solid rgba(255,255,255,0.3)', 
+                        color: cameraState.torchEnabled ? '#000' : '#fff', 
+                        padding: '12px', 
+                        borderRadius: '50%', 
+                        width: '56px', 
+                        height: '56px',
+                        fontSize: '1.4rem',
+                        transition: 'all 0.2s',
+                        opacity: cameraState.torchAvailable ? 1 : 0.2
+                      }}
+                    >
+                      {cameraState.torchEnabled ? '⚡' : '🚫'}
+                    </button>
+                  </div>
+                </div>
               </>
             ) : (
               <>
