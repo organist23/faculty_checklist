@@ -828,7 +828,18 @@ export default function FacultyDashboard() {
       addToast('Uploaded Successful', 'success');
     } catch (err) {
       console.error('Upload Error:', err);
-      addToast('Upload failed: ' + err.message, 'error');
+      
+      // Provide more specific error messages
+      let errorMessage = 'Upload failed';
+      if (err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (err.message?.includes('storage')) {
+        errorMessage = 'Storage error. Please try again or contact support.';
+      } else if (err.message) {
+        errorMessage = 'Upload failed: ' + err.message;
+      }
+      
+      addToast(errorMessage, 'error');
     } finally {
       // Clear specific item uploading status
       setUploadingItems(prev => ({ ...prev, [key]: false }));

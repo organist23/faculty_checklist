@@ -40,7 +40,11 @@ export function SystemProvider({ children }) {
         }
       )
       .subscribe((status) => {
-        console.log('System Settings Subscription Status:', status);
+        // Only log non-error statuses to reduce console noise
+        if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') {
+          console.log('System Settings Subscription Status:', status);
+        }
+        // Silently handle channel errors - polling fallback will handle sync
       });
 
     // Polling fallback to ensure sync even if realtime fails
