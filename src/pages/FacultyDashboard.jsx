@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Header from '../components/Header';
 import DeadlineBanner from '../components/DeadlineBanner';
@@ -2653,90 +2653,72 @@ export default function FacultyDashboard() {
                     textAlign: 'left',
                     color: 'white',
                     boxShadow: '0 10px 20px rgba(26, 67, 128, 0.2)',
-                    transition: 'transform 0.2s'
+                    transition: 'all 0.2s'
                   }}
-                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.02)'}
-                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                  onMouseOver={e => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 15px 30px rgba(26, 67, 128, 0.3)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(26, 67, 128, 0.2)';
+                  }}
                 >
-                  <div style={{ fontSize: '2.5rem' }}>📷</div>
+                  <div style={{ fontSize: '2.8rem' }}>📸</div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: '900', fontSize: '1.1rem', textTransform: 'uppercase' }}>In-App Camera</span>
-                    <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>Best for taking photos now</span>
+                    <span style={{ fontWeight: '900', fontSize: '1.2rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>In-App Camera</span>
+                    <span style={{ fontSize: '0.85rem', opacity: 0.9 }}>Take a photo now</span>
                   </div>
                 </button>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                   {/* Capture Option (Legacy System) */}
-                    <label 
-                      style={{ 
-                        cursor: 'pointer',
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        gap: '8px',
-                        padding: '20px 10px', 
-                        borderRadius: '20px', 
-                        background: '#f8fafc',
-                        border: '1px solid var(--gray-200)',
-                        textAlign: 'center'
-                      }}
-                    >
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        capture="environment" 
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            handleFileUpload(mediaCapture.key, e.target.files);
-                          }
-                          setMediaCapture({ isOpen: false, key: null, docName: null });
-                          e.target.value = null; 
-                        }}
-                        hidden 
-                      />
-                      <div style={{ fontSize: '1.5rem' }}>📱</div>
-                      <span style={{ fontWeight: '700', fontSize: '0.75rem', color: 'var(--gray-600)' }}>System Cam</span>
-                    </label>
-
-                    {/* Gallery Option */}
-                    <label 
-                      style={{ 
-                        cursor: 'pointer',
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        gap: '8px',
-                        padding: '20px 10px', 
-                        borderRadius: '20px', 
-                        background: '#f8fafc',
-                        border: '1px solid var(--gray-200)',
-                        textAlign: 'center'
-                      }}
-                    >
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        multiple
-                        onChange={(e) => {
-                          if (e.target.files && e.target.files.length > 0) {
-                            handleFileUpload(mediaCapture.key, e.target.files);
-                          }
-                          setMediaCapture({ isOpen: false, key: null, docName: null });
-                          e.target.value = null; 
-                        }}
-                        hidden 
-                      />
-                      <div style={{ fontSize: '1.5rem' }}>🖼️</div>
-                      <span style={{ fontWeight: '700', fontSize: '0.75rem', color: 'var(--gray-600)' }}>Gallery</span>
-                    </label>
-                </div>
+                {/* Gallery Option - Expanded to 1fr */}
+                <label 
+                  style={{ 
+                    cursor: 'pointer',
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '20px',
+                    padding: '24px', 
+                    borderRadius: '20px', 
+                    background: '#f8fafc',
+                    border: '2px solid var(--gray-100)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={e => {
+                    e.currentTarget.style.borderColor = 'var(--brand-green)';
+                    e.currentTarget.style.background = '#f0fdf4';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                  }}
+                  onMouseOut={e => {
+                    e.currentTarget.style.borderColor = 'var(--gray-100)';
+                    e.currentTarget.style.background = '#f8fafc';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    multiple
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        handleFileUpload(mediaCapture.key, e.target.files);
+                      }
+                      setMediaCapture({ isOpen: false, key: null, docName: null });
+                      e.target.value = null; 
+                    }}
+                    hidden 
+                  />
+                  <div style={{ fontSize: '2.8rem' }}>🖼️</div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <span style={{ fontWeight: '900', fontSize: '1.2rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Photo Library</span>
+                    <span style={{ fontSize: '0.85rem', color: 'var(--gray-500)' }}>Choose from Gallery</span>
+                  </div>
+                </label>
 
               </div>
               
-              <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.75rem', color: 'var(--gray-400)', fontWeight: '500' }}>
-                Use In-App Camera if your device's camera app locks up.
+              <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.85rem', color: 'var(--gray-400)', fontWeight: '500' }}>
+                For the best experience, use the <b>In-App Camera</b>.
               </p>
             </div>
 
