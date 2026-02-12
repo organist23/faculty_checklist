@@ -1073,3 +1073,40 @@ input:checked + .toggle-slider:before {
     padding-top: 12px !important;
   }
 }
+
+/* === Upload Options Cards (Mobile Optimized) === */
+.upload-option-card {
+  cursor: pointer;
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  justify-content: center;
+  gap: 12px;
+  padding: 30px 20px; 
+  border-radius: 20px; 
+  background: #ffffff;
+  border: 2px solid var(--gray-100);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.upload-option-card:hover, .upload-option-card:active {
+  transform: translateY(-4px);
+}
+
+/* Camera Card Specifics */
+.upload-option-card.camera:hover, .upload-option-card.camera:active {
+  border-color: var(--brand-blue);
+  background: var(--brand-blue-pale);
+  box-shadow: 0 10px 20px rgba(26, 67, 128, 0.1);
+}
+
+/* Gallery Card Specifics */
+.upload-option-card.gallery:hover, .upload-option-card.gallery:active {
+  border-color: var(--brand-green);
+  background: #f0fdf4;
+  box-shadow: 0 10px 20px rgba(0, 104, 55, 0.1);
+}

@@ -2498,33 +2498,7 @@ export default function FacultyDashboard() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {/* Take Photo Option */}
                 <label 
-                  style={{ 
-                    cursor: 'pointer',
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: '12px',
-                    padding: '30px 20px', 
-                    borderRadius: '20px', 
-                    background: '#ffffff',
-                    border: '2px solid var(--gray-100)',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    textAlign: 'center'
-                  }}
-                  className="upload-option-card"
-                  onMouseOver={e => {
-                    e.currentTarget.style.borderColor = 'var(--brand-blue)';
-                    e.currentTarget.style.background = 'var(--brand-blue-pale)';
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(26, 67, 128, 0.1)';
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.borderColor = 'var(--gray-100)';
-                    e.currentTarget.style.background = '#ffffff';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
+                  className="upload-option-card camera"
                 >
                   <input 
                     type="file" 
@@ -2536,7 +2510,7 @@ export default function FacultyDashboard() {
                       }
                       setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
-                    hidden 
+                    style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0 }}
                   />
                   <div style={{ 
                     width: '64px', 
@@ -2556,39 +2530,13 @@ export default function FacultyDashboard() {
                   </div>
                 </label>
 
-                {/* Gallery Option */}
+                {/* Gallery / File Option */}
                 <label 
-                  style={{ 
-                    cursor: 'pointer',
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: '12px',
-                    padding: '30px 20px', 
-                    borderRadius: '20px', 
-                    background: '#ffffff',
-                    border: '2px solid var(--gray-100)',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    textAlign: 'center'
-                  }}
-                  className="upload-option-card"
-                  onMouseOver={e => {
-                    e.currentTarget.style.borderColor = 'var(--brand-green)';
-                    e.currentTarget.style.background = '#f0fdf4';
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(0, 104, 55, 0.1)';
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.borderColor = 'var(--gray-100)';
-                    e.currentTarget.style.background = '#ffffff';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
+                  className="upload-option-card gallery"
                 >
                   <input 
                     type="file" 
-                    accept="image/*" 
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" 
                     multiple
                     onChange={(e) => {
                       if (e.target.files && e.target.files.length > 0) {
@@ -2596,7 +2544,7 @@ export default function FacultyDashboard() {
                       }
                       setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
-                    hidden 
+                    style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0 }} 
                   />
                   <div style={{ 
                     width: '64px', 
@@ -2609,16 +2557,16 @@ export default function FacultyDashboard() {
                     justifyContent: 'center',
                     fontSize: '2rem',
                     boxShadow: '0 8px 16px rgba(0, 104, 55, 0.2)'
-                  }}>🖼️</div>
+                  }}>📂</div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gallery</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Choose Files</span>
+                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Browse Files</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Photos or Docs</span>
                   </div>
                 </label>
               </div>
               
               <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.8rem', color: 'var(--gray-400)', fontWeight: '500' }}>
-                You can upload multiple files from your gallery.
+                You can upload multiple files at once.
               </p>
             </div>
 
