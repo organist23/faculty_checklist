@@ -164,6 +164,91 @@ export default function FacultyDashboard() {
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
   const [subjectError, setSubjectError] = useState('');
   const [internalSearch, setInternalSearch] = useState('');
+  
+  // LIVE CAMERA STATE
+  const [cameraState, setCameraState] = useState({
+    isActive: false,
+    stream: null,
+    previewBlob: null,
+    facingMode: 'environment', // Start with back camera
+    loading: false
+  });
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  const startCamera = async (mode = 'environment') => {
+    try {
+      setCameraState(prev => ({ ...prev, loading: true, isActive: true, facingMode: mode }));
+      
+      // Stop existing stream if any
+      if (cameraState.stream) {
+        cameraState.stream.getTracks().forEach(track => track.stop());
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { 
+          facingMode: mode,
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      });
+
+      setCameraState(prev => ({ ...prev, stream, loading: false }));
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error('Camera Error:', err);
+      addToast('Could not access camera. Please check permissions.', 'error');
+      setCameraState(prev => ({ ...prev, isActive: false, loading: false }));
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraState.stream) {
+      cameraState.stream.getTracks().forEach(track => track.stop());
+    }
+    setCameraState({
+      isActive: false,
+      stream: null,
+      previewBlob: null,
+      facingMode: 'environment',
+      loading: false
+    });
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas.getContext('2d');
+
+    // Set canvas dimensions to match video stream
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    // Draw frame
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      setCameraState(prev => ({ ...prev, previewBlob: blob }));
+    }, 'image/jpeg', 0.90);
+  };
+
+  const handleCameraUpload = async () => {
+    if (!cameraState.previewBlob) return;
+    
+    const file = new File([cameraState.previewBlob], `camera_capture_${Date.now()}.jpg`, {
+      type: 'image/jpeg'
+    });
+
+    await handleFileUpload(mediaCapture.key, [file]);
+    stopCamera();
+    setMediaCapture({ isOpen: false, key: null, docName: null });
+  };
+
   const compressImage = async (file) => {
     // Only compress images
     if (!file.type.startsWith('image/')) return file;
@@ -2482,7 +2567,7 @@ export default function FacultyDashboard() {
         </div>
       )}
       {/* Redesigned Media Capture Choice Modal */}
-      {mediaCapture.isOpen && (
+      {mediaCapture.isOpen && !cameraState.isActive && (
         <div 
           className="modal-backdrop" 
           style={{ 
@@ -2522,7 +2607,7 @@ export default function FacultyDashboard() {
             }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', color: 'var(--brand-blue-dark)', letterSpacing: '-0.02em' }}>
-                  Upload Document
+                  Select Method
                 </h3>
                 <p style={{ margin: '4px 0 0', fontSize: '0.9rem', color: 'var(--gray-500)', fontWeight: '500' }}>
                   {mediaCapture.docName}
@@ -2551,132 +2636,107 @@ export default function FacultyDashboard() {
 
             {/* Modal Body */}
             <div style={{ padding: '24px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-                {/* Take Photo Option */}
-                <label 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
+                
+                {/* NEW: LIVE IN-APP CAMERA (MOST STABLE) */}
+                <button 
+                  onClick={() => startCamera('environment')}
                   style={{ 
                     cursor: 'pointer',
                     display: 'flex', 
-                    flexDirection: 'column', 
                     alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: '12px',
-                    padding: '30px 20px', 
+                    gap: '20px',
+                    padding: '24px', 
                     borderRadius: '20px', 
-                    background: '#ffffff',
-                    border: '2px solid var(--gray-100)',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    textAlign: 'center'
-                  }}
-                  className="upload-option-card"
-                  onMouseOver={e => {
-                    e.currentTarget.style.borderColor = 'var(--brand-blue)';
-                    e.currentTarget.style.background = 'var(--brand-blue-pale)';
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(26, 67, 128, 0.1)';
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.borderColor = 'var(--gray-100)';
-                    e.currentTarget.style.background = '#ffffff';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    capture="environment" 
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        handleFileUpload(mediaCapture.key, e.target.files);
-                      }
-                      setMediaCapture({ isOpen: false, key: null, docName: null });
-                      e.target.value = null; // Clear to allow re-selection
-                    }}
-                    hidden 
-                  />
-                  <div style={{ 
-                    width: '64px', 
-                    height: '64px', 
-                    borderRadius: '16px', 
-                    background: 'var(--brand-blue)', 
+                    background: 'var(--brand-blue)',
+                    border: 'none',
+                    textAlign: 'left',
                     color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '2rem',
-                    boxShadow: '0 8px 16px rgba(26, 67, 128, 0.2)'
-                  }}>📸</div>
+                    boxShadow: '0 10px 20px rgba(26, 67, 128, 0.2)',
+                    transition: 'transform 0.2s'
+                  }}
+                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                >
+                  <div style={{ fontSize: '2.5rem' }}>📷</div>
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Take Photo</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Camera</span>
+                    <span style={{ fontWeight: '900', fontSize: '1.1rem', textTransform: 'uppercase' }}>In-App Camera</span>
+                    <span style={{ fontSize: '0.8rem', opacity: 0.9 }}>Best for taking photos now</span>
                   </div>
-                </label>
+                </button>
 
-                {/* Gallery Option */}
-                <label 
-                  style={{ 
-                    cursor: 'pointer',
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    gap: '12px',
-                    padding: '30px 20px', 
-                    borderRadius: '20px', 
-                    background: '#ffffff',
-                    border: '2px solid var(--gray-100)',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    textAlign: 'center'
-                  }}
-                  className="upload-option-card"
-                  onMouseOver={e => {
-                    e.currentTarget.style.borderColor = 'var(--brand-green)';
-                    e.currentTarget.style.background = '#f0fdf4';
-                    e.currentTarget.style.transform = 'translateY(-4px)';
-                    e.currentTarget.style.boxShadow = '0 10px 20px rgba(0, 104, 55, 0.1)';
-                  }}
-                  onMouseOut={e => {
-                    e.currentTarget.style.borderColor = 'var(--gray-100)';
-                    e.currentTarget.style.background = '#ffffff';
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    multiple
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0) {
-                        handleFileUpload(mediaCapture.key, e.target.files);
-                      }
-                      setMediaCapture({ isOpen: false, key: null, docName: null });
-                      e.target.value = null; // Clear
-                    }}
-                    hidden 
-                  />
-                  <div style={{ 
-                    width: '64px', 
-                    height: '64px', 
-                    borderRadius: '16px', 
-                    background: 'var(--brand-green)', 
-                    color: 'white',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '2rem',
-                    boxShadow: '0 8px 16px rgba(0, 104, 55, 0.2)'
-                  }}>🖼️</div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontWeight: '800', fontSize: '0.9rem', color: 'var(--brand-blue-dark)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Gallery</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: '2px' }}>Choose Files</span>
-                  </div>
-                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                   {/* Capture Option (Legacy System) */}
+                    <label 
+                      style={{ 
+                        cursor: 'pointer',
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '20px 10px', 
+                        borderRadius: '20px', 
+                        background: '#f8fafc',
+                        border: '1px solid var(--gray-200)',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        capture="environment" 
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleFileUpload(mediaCapture.key, e.target.files);
+                          }
+                          setMediaCapture({ isOpen: false, key: null, docName: null });
+                          e.target.value = null; 
+                        }}
+                        hidden 
+                      />
+                      <div style={{ fontSize: '1.5rem' }}>📱</div>
+                      <span style={{ fontWeight: '700', fontSize: '0.75rem', color: 'var(--gray-600)' }}>System Cam</span>
+                    </label>
+
+                    {/* Gallery Option */}
+                    <label 
+                      style={{ 
+                        cursor: 'pointer',
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        gap: '8px',
+                        padding: '20px 10px', 
+                        borderRadius: '20px', 
+                        background: '#f8fafc',
+                        border: '1px solid var(--gray-200)',
+                        textAlign: 'center'
+                      }}
+                    >
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        multiple
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            handleFileUpload(mediaCapture.key, e.target.files);
+                          }
+                          setMediaCapture({ isOpen: false, key: null, docName: null });
+                          e.target.value = null; 
+                        }}
+                        hidden 
+                      />
+                      <div style={{ fontSize: '1.5rem' }}>🖼️</div>
+                      <span style={{ fontWeight: '700', fontSize: '0.75rem', color: 'var(--gray-600)' }}>Gallery</span>
+                    </label>
+                </div>
+
               </div>
               
-              <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.8rem', color: 'var(--gray-400)', fontWeight: '500' }}>
-                You can upload multiple files from your gallery.
+              <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '0.75rem', color: 'var(--gray-400)', fontWeight: '500' }}>
+                Use In-App Camera if your device's camera app locks up.
               </p>
             </div>
 
@@ -2684,16 +2744,7 @@ export default function FacultyDashboard() {
             <div style={{ padding: '0 24px 24px' }}>
               <button 
                 className="btn btn-secondary" 
-                style={{ 
-                  width: '100%', 
-                  padding: '14px', 
-                  borderRadius: '14px', 
-                  fontSize: '1rem', 
-                  fontWeight: '700',
-                  background: 'var(--gray-50)',
-                  border: '1px solid var(--gray-200)',
-                  color: 'var(--gray-600)'
-                }}
+                style={{ width: '100%', padding: '12px', borderRadius: '12px', fontWeight: '700' }}
                 onClick={() => setMediaCapture({ isOpen: false, key: null, docName: null })}
               >
                 Cancel
@@ -2702,6 +2753,121 @@ export default function FacultyDashboard() {
           </div>
         </div>
       )}
+
+      {/* LIVE CAMERA MODAL OVERLAY */}
+      {cameraState.isActive && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          zIndex: 1300,
+          background: '#000',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {/* Header */}
+          <div style={{ 
+            padding: '16px 20px', 
+            background: 'rgba(0,0,0,0.5)', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            color: 'white',
+            zIndex: 10
+          }}>
+            <h4 style={{ margin: 0 }}>Live Camera: {mediaCapture.docName}</h4>
+            <button 
+              onClick={stopCamera}
+              style={{ background: 'none', border: 'none', color: 'white', fontSize: '1.5rem', cursor: 'pointer' }}
+            >✕</button>
+          </div>
+
+          {/* Viewport */}
+          <div style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {cameraState.loading && (
+              <div style={{ color: 'white' }}>Starting camera...</div>
+            )}
+            
+            {/* The Video Feed */}
+            <video 
+              ref={videoRef}
+              autoPlay 
+              playsInline 
+              muted
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'cover',
+                display: cameraState.previewBlob ? 'none' : 'block' 
+              }}
+            />
+
+            {/* Photo Preview (Captured) */}
+            {cameraState.previewBlob && (
+              <img 
+                src={URL.createObjectURL(cameraState.previewBlob)}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                alt="Captured"
+              />
+            )}
+
+            {/* Canvas (Hidden, used for snapping) */}
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
+          </div>
+
+          {/* Controls */}
+          <div style={{ 
+            padding: '30px 20px 50px', 
+            background: 'rgba(0,0,0,0.8)', 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center',
+            gap: '30px',
+            zIndex: 10
+          }}>
+            {!cameraState.previewBlob ? (
+              <>
+                <button 
+                  onClick={() => startCamera(cameraState.facingMode === 'user' ? 'environment' : 'user')}
+                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid white', color: 'white', padding: '12px', borderRadius: '50%', width: '50px', height: '50px' }}
+                >🔄</button>
+                
+                <button 
+                  onClick={capturePhoto}
+                  style={{ 
+                    width: '74px', 
+                    height: '74px', 
+                    borderRadius: '50%', 
+                    background: 'white', 
+                    border: '5px solid #555',
+                    cursor: 'pointer'
+                  }}
+                />
+
+                <div style={{ width: '50px' }} />
+              </>
+            ) : (
+              <>
+                <button 
+                  className="btn btn-secondary"
+                  onClick={() => setCameraState(prev => ({ ...prev, previewBlob: null }))}
+                  style={{ borderRadius: '12px', padding: '12px 24px', background: '#333', color: 'white', border: 'none' }}
+                >
+                  RETAKE
+                </button>
+                
+                <button 
+                  className="btn btn-primary"
+                  onClick={handleCameraUpload}
+                  style={{ borderRadius: '12px', padding: '12px 32px', background: 'var(--brand-blue)', fontWeight: '800' }}
+                >
+                  USE PHOTO
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
