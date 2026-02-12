@@ -2497,9 +2497,7 @@ export default function FacultyDashboard() {
             <div style={{ padding: '24px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                 {/* Take Photo Option */}
-                <label 
-                  className="upload-option-card camera"
-                >
+                <label className="upload-option-card camera" style={{ position: 'relative' }}>
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -2510,7 +2508,16 @@ export default function FacultyDashboard() {
                       }
                       setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
-                    style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0 }}
+                    style={{ 
+                      position: 'absolute', 
+                      top: 0, 
+                      left: 0, 
+                      width: '100%', 
+                      height: '100%', 
+                      opacity: 0, 
+                      cursor: 'pointer',
+                      zIndex: 10 
+                    }}
                   />
                   <div style={{ 
                     width: '64px', 
@@ -2531,9 +2538,7 @@ export default function FacultyDashboard() {
                 </label>
 
                 {/* Gallery / File Option */}
-                <label 
-                  className="upload-option-card gallery"
-                >
+                <label className="upload-option-card gallery" style={{ position: 'relative' }}>
                   <input 
                     type="file" 
                     accept="image/*" 
@@ -2544,7 +2549,16 @@ export default function FacultyDashboard() {
                       }
                       setMediaCapture({ isOpen: false, key: null, docName: null });
                     }}
-                    style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0,0,0,0)', border: 0 }} 
+                    style={{ 
+                      position: 'absolute', 
+                      top: 0, 
+                      left: 0, 
+                      width: '100%', 
+                      height: '100%', 
+                      opacity: 0, 
+                      cursor: 'pointer', // Important for desktop usability feedback
+                      zIndex: 10 
+                    }} 
                   />
                   <div style={{ 
                     width: '64px', 
