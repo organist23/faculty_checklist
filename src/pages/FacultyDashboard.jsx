@@ -757,12 +757,19 @@ export default function FacultyDashboard() {
 
         // Unique filename with random string to prevent collisions
         const uniqueSuffix = Math.random().toString(36).substring(2, 15);
-        const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const filePath = `${user.id}/${Date.now()}_${uniqueSuffix}_${cleanName}`;
+        // Robust filename cleaning:
+        // 1. Get extension
+        const fileExt = file.name.split('.').pop();
+        // 2. Create clean name (timestamp + random + extension) to avoid ANY special char issues
+        const cleanName = `${Date.now()}_${uniqueSuffix}.${fileExt}`;
+        const filePath = `${user.id}/${cleanName}`;
         
         const { error: uploadError } = await supabase.storage
           .from('checklists')
-          .upload(filePath, file);
+          .upload(filePath, file, {
+            upsert: false,
+            contentType: file.type // Ensure content type is set
+          });
 
         if (uploadError) throw uploadError;
 
