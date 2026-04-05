@@ -10,6 +10,7 @@ export function SystemProvider({ children }) {
     deadline: null,
     deadlineEnabled: false,
     loading: true,
+    error: null,
     dbId: null // Store the record ID for updates
   });
 
@@ -97,7 +98,11 @@ export function SystemProvider({ children }) {
     } catch (err) {
       if (!silent) console.error('fetchSettings Exception:', err);
       if (!silent) {
-        setSettings(prev => ({ ...prev, loading: false }));
+        setSettings(prev => ({ 
+          ...prev, 
+          loading: false, 
+          error: err.message || 'Database error querying schema' 
+        }));
       }
     }
   };

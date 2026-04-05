@@ -138,7 +138,7 @@ export const AuthProvider = ({ children }) => {
         user: null,
         isAuthenticated: false,
         loading: false,
-        error: 'Account not authorized. Please check your internet connection.'
+        error: err.message || 'Account not authorized. Please check your internet connection.'
       });
       return false; // Failed
     }

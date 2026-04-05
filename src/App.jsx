@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import './App.css';
-import { SystemProvider } from './context/SystemContext';
+import { SystemProvider, useSystem } from './context/SystemContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 
@@ -38,6 +38,7 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 // Main App Router
 function AppRouter() {
   const { isAuthenticated, user } = useAuth();
+  const { settings } = useSystem();
   const isOnline = useNetworkStatus();
   
   return (
@@ -61,6 +62,23 @@ function AppRouter() {
           gap: '8px'
         }}>
           <span>📡</span> Please check your internet connection.
+        </div>
+      )}
+      {settings.error && (
+        <div style={{ 
+          position: 'fixed', 
+          top: isOnline ? 0 : '35px', 
+          left: 0, 
+          right: 0, 
+          backgroundColor: '#991b1b', 
+          color: 'white', 
+          textAlign: 'center', 
+          padding: '8px', 
+          zIndex: 99998,
+          fontSize: '14px',
+          fontWeight: 'bold'
+        }}>
+          ⚠️ {settings.error}
         </div>
       )}
       <Routes>
