@@ -636,11 +636,17 @@ export default function FacultyDashboard() {
     const totalOtherItems = (checklist.other_docs || []).length;
     const totalItems = totalSubjectItems + totalOtherItems;
 
-    const uploadedSubjectItems = (checklist.subjects || []).reduce((acc, sub) => acc + (sub?.docs?.length || 0), 0); 
+    // Count unique categories filled across all subjects
+    const uploadedSubjectItems = (checklist.subjects || []).reduce((acc, sub) => {
+      // Use a Set to count unique document types (categories) present in the docs array
+      const uniqueTypes = new Set((sub?.docs || []).map(d => d.type).filter(Boolean));
+      return acc + uniqueTypes.size;
+    }, 0);
+
     const uploadedOtherItems = (checklist.other_docs || []).reduce((acc, item) => acc + (item?.docs?.length > 0 ? 1 : 0), 0);
     
     const uploadedCount = uploadedSubjectItems + uploadedOtherItems;
-    const totalRequired = totalItems; // Simplified total count
+    const totalRequired = totalItems;
 
     return {
       total: totalRequired > 0 ? Math.round((uploadedCount / totalRequired) * 100) : 0,

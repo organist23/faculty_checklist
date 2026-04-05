@@ -414,14 +414,22 @@ export default function AdminDashboard() {
   }, [globalChecklists]);
 
   const calculateChecklistProgress = (checklist) => {
-    const totalSubjectSlots = checklist.subjects.length * 12;
-    const totalOtherSlots = checklist.other_docs.length;
+    // Each subject has 12 standard document categories
+    const categoriesPerSubject = DEFAULT_DOCUMENTS.subjects.length;
+    const totalSubjectSlots = (checklist.subjects || []).length * categoriesPerSubject;
+    const totalOtherSlots = (checklist.other_docs || []).length;
     const totalSlots = totalSubjectSlots + totalOtherSlots;
     
     if (totalSlots === 0) return 0;
     
-    const filledSubjectSlots = checklist.subjects.reduce((acc, s) => acc + Math.min(s.docs.length, 12), 0);
-    const filledOtherSlots = checklist.other_docs.reduce((acc, o) => acc + (o.docs.length > 0 ? 1 : 0), 0);
+    // Count unique categories filled across all subjects
+    const filledSubjectSlots = (checklist.subjects || []).reduce((acc, s) => {
+      // Use a Set to count unique document types (categories) present in the docs array
+      const uniqueTypes = new Set((s.docs || []).map(d => d.type).filter(Boolean));
+      return acc + uniqueTypes.size;
+    }, 0);
+
+    const filledOtherSlots = (checklist.other_docs || []).reduce((acc, o) => acc + (o.docs.length > 0 ? 1 : 0), 0);
     
     return Math.round(((filledSubjectSlots + filledOtherSlots) / totalSlots) * 100);
   };
