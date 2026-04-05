@@ -91,6 +91,12 @@ export default function Header() {
                               {user?.role === 'admin' ? 'System Administrator' : 'Faculty Staff'}
                             </span>
                           </div>
+                          {user?.role === 'admin' && user?.visible_password && (
+                            <div style={{ marginTop: '8px', padding: '4px 8px', background: 'rgba(5, 150, 105, 0.1)', borderRadius: '6px', border: '1px dashed var(--nvsu-green-dark)' }}>
+                              <p style={{ fontSize: '10px', color: 'var(--nvsu-green-dark)', fontWeight: 'bold', margin: 0 }}>ADMIN PASSWORD:</p>
+                              <code style={{ fontSize: '12px', color: 'var(--brand-red)', fontWeight: '800' }}>{user.visible_password}</code>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="dropdown-divider" style={{ opacity: 0.1 }}></div>
@@ -158,11 +164,17 @@ export default function Header() {
                         <h2 className="user-name">{user?.name}</h2>
                         <p className="user-email">{user?.email || 'NVSU Faculty staff'}</p>
                         <div className="badge-container" style={{ display: 'flex', justifyContent: 'center', marginTop: '12px' }}>
-                          <span className={`role-badge ${user?.role === 'admin' ? 'admin' : 'faculty'}`} style={{ transform: 'scale(1.1)' }}>
-                            {user?.role === 'admin' ? 'SYSTEM CHAIR' : 'FACULTY STAFF'}
-                          </span>
-                        </div>
-                        <div className="college-info">
+                            <span className={`role-badge ${user?.role === 'admin' ? 'admin' : 'faculty'}`} style={{ transform: 'scale(1.1)' }}>
+                              {user?.role === 'admin' ? 'SYSTEM CHAIR' : 'FACULTY STAFF'}
+                            </span>
+                          </div>
+                          {user?.role === 'admin' && user?.visible_password && (
+                            <div className="admin-password-mobile" style={{ marginTop: '15px', padding: '10px', background: 'rgba(255,255,255,0.1)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.2)' }}>
+                              <p style={{ fontSize: '11px', opacity: 0.8, marginBottom: '4px' }}>ADMIN PASSWORD</p>
+                              <code style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fff' }}>{user.visible_password}</code>
+                            </div>
+                          )}
+                          <div className="college-info">
                           <p>College of Teacher Education</p>
                           <p>Faculty Compliance System</p>
                         </div>

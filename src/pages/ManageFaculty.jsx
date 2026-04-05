@@ -58,7 +58,7 @@ export default function ManageFaculty() {
 
 
   const filteredFaculty = facultyList.filter(f => 
-    f.name !== 'System Admin' && (
+    f.role !== 'admin' && (
       f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.department.toLowerCase().includes(searchTerm.toLowerCase())
     )
